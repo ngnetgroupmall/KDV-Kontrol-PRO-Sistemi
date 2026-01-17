@@ -101,6 +101,16 @@ self.onmessage = async (e: MessageEvent) => {
                     const aciklama = String(getValue('Açıklama') || '');
                     const combinedText = `${directNo} ${aciklama}`;
                     const { first, matches } = extractInvoiceNo(combinedText);
+                    const alacakTutari = parseTurkishNumber(getValue('Alacak Tutarı'));
+
+                    // Validation: (Alacak > 0) AND (No valid 16-char invoice) AND (Not a summary/transfer row)
+                    const normalizedAciklama = aciklama.toLocaleUpperCase('tr-TR');
+                    const isSummaryRow = normalizedAciklama.includes('NAKLİ YEKÜN') ||
+                        normalizedAciklama.includes('NAKLI YEKUN') ||
+                        normalizedAciklama.includes('DEVİR') ||
+                        normalizedAciklama.includes('DEVIR');
+
+                    const validationError = alacakTutari > 0 && !first && !isSummaryRow;
 
                     return {
                         id: `acc-${index}`,
@@ -109,9 +119,10 @@ self.onmessage = async (e: MessageEvent) => {
                         "Ref.No": getValue('Ref.No'),
                         "Fatura No": first || '',
                         "Açıklama": aciklama,
-                        "Alacak Tutarı": parseTurkishNumber(getValue('Alacak Tutarı')),
+                        "Alacak Tutarı": alacakTutari,
                         originalRow: row,
-                        multipleInvoicesFound: matches.length > 1
+                        multipleInvoicesFound: matches.length > 1,
+                        validationError
                     };
                 }
             }).filter(Boolean);
@@ -130,9 +141,16 @@ self.onmessage = async (e: MessageEvent) => {
 
         // Aggregation for Accounting
         const accAgg: Record<string, { total: number, rows: any[] }> = {};
+        const report4: any[] = []; // Hatalı Muhasebe Kayıtları (Fatura no yok/hatalı)
+
         console.log(`Worker: Reconciling ${eInvoices.length} E-Invoices and ${accountingRows.length} Accounting rows.`);
 
         accountingRows.forEach((row: any) => {
+            if (row.validationError) {
+                report4.push(row);
+                return;
+            }
+
             const fNo = row["Fatura No"];
             const amount = row["Alacak Tutarı"];
             if (!fNo) return;
@@ -186,7 +204,7 @@ self.onmessage = async (e: MessageEvent) => {
 
         self.postMessage({
             type: 'RECONCILE_SUCCESS',
-            payload: { report1, report2, report3 }
+            payload: { report1, report2, report3, report4 }
         });
     }
 };

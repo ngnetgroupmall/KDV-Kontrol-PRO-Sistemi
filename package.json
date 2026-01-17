@@ -1,7 +1,7 @@
 {
   "name": "kdv-kontrol",
   "private": true,
-  "version": "1.2.0",
+  "version": "1.3.0",
   "type": "module",
   "main": "dist-electron/main.js",
   "scripts": {
@@ -72,4 +72,3 @@
     "vite-plugin-electron-renderer": "^0.14.6"
   }
 }
-漫步

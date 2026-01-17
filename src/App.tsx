@@ -151,7 +151,6 @@ export default function App() {
   return (
     <div className="min-h-screen p-4 flex flex-col items-center min-w-[1200px] overflow-x-auto">
       <header id="main-header" className="v-grid-header py-6 px-12 border-b border-white/10 bg-bg-card/40 backdrop-blur-2xl sticky top-0 z-[100] shadow-2xl">
-        {/* Left: Brand Title */}
         <div className="v-flex-row v-justify-self-start gap-5">
           <div className="w-14 h-14 bg-primary rounded-2xl flex items-center justify-center shadow-lg shadow-primary/40 ring-2 ring-primary/20">
             <FileSpreadsheet className="text-white w-8 h-8" />
@@ -162,7 +161,6 @@ export default function App() {
           </div>
         </div>
 
-        {/* Right: Logo & Exit */}
         <div className="v-flex-row gap-10 v-justify-self-end">
           <img src="./logo.png" alt="NG NET GROUP" className="h-12 w-auto object-contain brightness-150 drop-shadow-[0_0_25px_rgba(255,255,255,0.4)]" />
           {step > 0 && (
@@ -256,7 +254,6 @@ export default function App() {
             onComplete={(statuses, validities) => {
               setExcludedStatuses(statuses);
               setExcludedValidities(validities);
-              // Filter out excluded invoices
               setEInvoiceData(prev => prev.filter((row: any) =>
                 !statuses.includes(row["Statü"]) && !validities.includes(row["Geçerlilik Durumu"])
               ));
@@ -328,7 +325,7 @@ function Landing({ version, onNext }: { version: string, onNext: () => void }) {
           </div>
           <h3 className="text-xl font-bold mb-3 text-white">1. Dosyaları Yükle</h3>
           <p className="text-text-muted text-sm leading-relaxed">
-            E-Fatura listelerini (GİB/Portal) ve Muhasebe (Muavin Defter vb.) Excel dosyalarını sürükleyip bırakın.
+            E-Fatura listelerini (GİB/Portal) ve Muhasebe Excel dosyalarını sürükleyip bırakın.
           </p>
         </div>
 
@@ -338,7 +335,7 @@ function Landing({ version, onNext }: { version: string, onNext: () => void }) {
           </div>
           <h3 className="text-xl font-bold mb-3 text-white">2. Akıllı Eşleştirme</h3>
           <p className="text-text-muted text-sm leading-relaxed">
-            Sütunları belirtin. Sistem, karmaşık açıklama metinleri içinden fatura numaralarını otomatik olarak cımbızla çeker.
+            Sistem, karmaşık açıklama metinleri içinden fatura numaralarını otomatik olarak cımbızla çeker.
           </p>
         </div>
 
@@ -412,10 +409,7 @@ function FileLoader({ type, onFiles }: { type: 'EINVOICE' | 'ACCOUNTING', onFile
 
       <button
         disabled={files.length === 0}
-        onClick={() => {
-          console.log('Files selected:', files);
-          onFiles(files);
-        }}
+        onClick={() => onFiles(files)}
         className={`btn-primary self-center mt-10 px-16 py-4 rounded-2xl shadow-2xl transition-all duration-300 ${files.length > 0 ? 'scale-110 shadow-primary/40' : 'opacity-20'} text-lg`}
       >
         Eşleştirmeye Başla
@@ -428,7 +422,6 @@ function ReportView({ reports, onReset }: { reports: any, onReset: () => void })
   const [activeTab, setActiveTab] = useState(1);
 
   const downloadExcel = (data: any[], fileName: string) => {
-    // Convert DD.MM.YYYY strings back to Date objects for Excel
     const formattedData = data.map(row => {
       const newRow: any = {};
       Object.entries(row).forEach(([key, val]) => {
@@ -445,8 +438,6 @@ function ReportView({ reports, onReset }: { reports: any, onReset: () => void })
     const ws = XLSX.utils.json_to_sheet(formattedData, { cellDates: true });
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Rapor");
-
-    // Better filename and explicit write
     const safeName = fileName.replace(/[^a-zA-Z0-9ÇĞİÖŞÜçğıöşü]/g, '_');
     const timestamp = new Date().toLocaleDateString('tr-TR').replace(/\./g, '');
     XLSX.writeFile(wb, `${safeName}_${timestamp}.xlsx`);
@@ -455,7 +446,8 @@ function ReportView({ reports, onReset }: { reports: any, onReset: () => void })
   const tabs = [
     { id: 1, label: 'E-Fatura var, Muhasebe yok', data: reports.report1, color: 'text-error', bgColor: 'bg-error/10' },
     { id: 2, label: 'Muhasebe var, E-Fatura yok', data: reports.report2, color: 'text-warning', bgColor: 'bg-warning/10' },
-    { id: 3, label: 'KDV Farkları', data: reports.report3, color: 'text-accent', bgColor: 'bg-accent/10' }
+    { id: 3, label: 'KDV Farkları', data: reports.report3, color: 'text-accent', bgColor: 'bg-accent/10' },
+    { id: 4, label: 'Hatalı Muhasebe Kayıtları', data: reports.report4 || [], color: 'text-rose-400', bgColor: 'bg-rose-400/10' }
   ];
 
   const currentTab = tabs.find(t => t.id === activeTab);
@@ -463,7 +455,7 @@ function ReportView({ reports, onReset }: { reports: any, onReset: () => void })
 
   return (
     <div className="w-full">
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-12">
         {tabs.map(tab => (
           <div
             key={tab.id}
@@ -489,19 +481,14 @@ function ReportView({ reports, onReset }: { reports: any, onReset: () => void })
             <p className="text-text-muted font-medium mt-1">Hatalı bulunan kayıtların detaylı dökümü.</p>
           </div>
           <div className="flex gap-3 flex-wrap">
-            <button
-              onClick={onReset}
-              className="v-btn-back"
-            >
-              ← Başa Dön
-            </button>
+            <button onClick={onReset} className="v-btn-back">← Başa Dön</button>
             <button
               onClick={() => {
                 const wb = XLSX.utils.book_new();
                 tabs.forEach(tab => {
                   if (tab.data.length > 0) {
                     const formatted = tab.data.map((r: any) => {
-                      const { originalRow, id, multipleInvoicesFound, ...rest } = r;
+                      const { originalRow, id, multipleInvoicesFound, validationError, ...rest } = r;
                       const cleaned: any = {};
                       Object.entries(rest).forEach(([k, v]) => {
                         if (typeof v === 'string' && /^\d{2}\.\d{2}\.\d{4}$/.test(v)) {
@@ -525,7 +512,7 @@ function ReportView({ reports, onReset }: { reports: any, onReset: () => void })
             </button>
             <button
               onClick={() => downloadExcel(currentTabData.map((r: any) => {
-                const { originalRow, id, multipleInvoicesFound, ...rest } = r;
+                const { originalRow, id, multipleInvoicesFound, validationError, ...rest } = r;
                 return rest;
               }), currentTab?.label || 'Rapor')}
               className="v-btn-next !py-3 !px-8 !text-sm"
@@ -539,7 +526,7 @@ function ReportView({ reports, onReset }: { reports: any, onReset: () => void })
           <table className="w-full text-left text-sm whitespace-nowrap">
             <thead className="sticky top-0 bg-bg-card/95 backdrop-blur-md z-10">
               <tr>
-                {currentTabData.length > 0 && Object.keys(currentTabData[0]).filter(k => k !== 'originalRow' && k !== 'id' && k !== 'multipleInvoicesFound').map(key => (
+                {currentTabData.length > 0 && Object.keys(currentTabData[0]).filter(k => k !== 'originalRow' && k !== 'id' && k !== 'multipleInvoicesFound' && k !== 'validationError').map(key => (
                   <th key={key} className="p-4 font-black border-2 border-white/10 text-text-muted uppercase tracking-tighter text-xs bg-bg-card/50">{key}</th>
                 ))}
               </tr>
@@ -547,17 +534,15 @@ function ReportView({ reports, onReset }: { reports: any, onReset: () => void })
             <tbody className="divide-y-0">
               {currentTabData.map((row: any, i: number) => (
                 <tr key={i} className="hover:bg-primary/[0.03] transition-colors group">
-                  {Object.keys(row).filter(k => k !== 'originalRow' && k !== 'id' && k !== 'multipleInvoicesFound').map(key => {
+                  {Object.keys(row).filter(k => k !== 'originalRow' && k !== 'id' && k !== 'multipleInvoicesFound' && k !== 'validationError').map(key => {
                     const val = row[key];
                     const isAmount = key.toLowerCase().includes('tutar') || key.toLowerCase().includes('alacak');
                     const isDateField = key.toLowerCase().includes('tarih');
-
                     let displayVal = String(val || '-');
 
                     if (val instanceof Date) {
                       displayVal = val.toLocaleDateString('tr-TR');
                     } else if (typeof val === 'number') {
-                      // Fallback for Excel dates that might have reached the UI as numbers
                       if (isDateField && val > 30000 && val < 60000) {
                         const date = new Date((val - 25569) * 86400 * 1000);
                         displayVal = date.toLocaleDateString('tr-TR');
@@ -569,10 +554,7 @@ function ReportView({ reports, onReset }: { reports: any, onReset: () => void })
                     }
 
                     return (
-                      <td
-                        key={key}
-                        className={`p-4 font-medium border-2 border-white/10 group-hover:border-primary/20 transition-colors whitespace-nowrap ${isAmount ? 'text-right' : ''}`}
-                      >
+                      <td key={key} className={`p-4 font-medium border-2 border-white/10 group-hover:border-primary/20 transition-colors whitespace-nowrap ${isAmount ? 'text-right' : ''}`}>
                         {displayVal}
                       </td>
                     );
