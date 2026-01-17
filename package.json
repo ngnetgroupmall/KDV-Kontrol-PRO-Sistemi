@@ -39,7 +39,8 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "KDV Kontrol PRO"
+      "shortcutName": "KDV Kontrol PRO",
+      "artifactName": "${productName}-Setup-${version}.${ext}"
     }
   },
   "dependencies": {
