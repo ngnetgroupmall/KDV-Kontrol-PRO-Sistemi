@@ -4,7 +4,7 @@ import { AlertCircle, Link2, ArrowRight, Layers, Save, Trash2, RotateCcw } from 
 
 interface Props {
     file: File;
-    canonicalFields: string[];
+    canonicalFields: { key: string; label: string; required: boolean }[];
     onComplete: (mapping: Record<string, string>, headerRowIndex: number) => void;
     onCancel: () => void;
 }
@@ -12,7 +12,6 @@ interface Props {
 export default function ColumnMapper({ file, canonicalFields, onComplete, onCancel }: Props) {
     const [headers, setHeaders] = useState<string[]>([]);
     const [mapping, setMapping] = useState<Record<string, string>>({});
-    const REQUIRED_FIELDS = ['Fatura Tarihi', 'Fatura No', 'KDV Tutarı', 'Tarih', 'Alacak Tutarı'];
     const [preview, setPreview] = useState<any[]>([]);
     const [detectedHeaderRow, setDetectedHeaderRow] = useState<number>(0);
     const [saveStatus, setSaveStatus] = useState<'idle' | 'saved' | 'cleared'>('idle');
@@ -62,12 +61,12 @@ export default function ColumnMapper({ file, canonicalFields, onComplete, onCanc
                 // 2. Fallback to auto-match
                 const newMapping: any = {};
                 canonicalFields.forEach(cf => {
-                    const normCF = cf.toLocaleLowerCase('tr-TR').replace(/\s+/g, '');
+                    const normCF = cf.label.toLocaleLowerCase('tr-TR').replace(/\s+/g, '');
                     const match = cleanHeaders.find(header => {
                         const normH = header.toLocaleLowerCase('tr-TR').replace(/\s+/g, '');
                         return normH.includes(normCF) || normCF.includes(normH);
                     });
-                    if (match) newMapping[cf] = match;
+                    if (match) newMapping[cf.key] = match;
                 });
                 setMapping(newMapping);
             }
@@ -93,10 +92,10 @@ export default function ColumnMapper({ file, canonicalFields, onComplete, onCanc
     };
 
     const allRequiredMapped = canonicalFields
-        .filter(f => REQUIRED_FIELDS.includes(f))
-        .every(f => !!mapping[f] && mapping[f] !== '— YOKTUR —');
+        .filter(f => f.required)
+        .every(f => !!mapping[f.key] && mapping[f.key] !== '— YOKTUR —');
 
-    const mappedCount = canonicalFields.filter(f => !!mapping[f] && mapping[f] !== '— YOKTUR —').length;
+    const mappedCount = canonicalFields.filter(f => !!mapping[f.key] && mapping[f.key] !== '— YOKTUR —').length;
 
     return (
         <div className="wizard-step">
@@ -132,12 +131,12 @@ export default function ColumnMapper({ file, canonicalFields, onComplete, onCanc
                 {/* Mapping Grid */}
                 <div className="grid gap-3 mb-8">
                     {canonicalFields.map(field => {
-                        const isMapped = !!mapping[field];
+                        const isMapped = !!mapping[field.key];
                         return (
                             <div
-                                key={field}
+                                key={field.key}
                                 className={`v-grid-mapper p-5 rounded-2xl border-2 transition-all duration-300 ${isMapped
-                                    ? (mapping[field] === '— YOKTUR —' ? 'bg-white/5 border-white/10' : 'bg-success/5 border-success/20 shadow-lg shadow-success/5')
+                                    ? (mapping[field.key] === '— YOKTUR —' ? 'bg-white/5 border-white/10' : 'bg-success/5 border-success/20 shadow-lg shadow-success/5')
                                     : 'bg-error/5 border-error/30 shadow-xl shadow-error/5 pulse-error'
                                     }`}
                             >
@@ -145,9 +144,9 @@ export default function ColumnMapper({ file, canonicalFields, onComplete, onCanc
                                 <div className="min-w-0">
                                     <div className="flex items-center gap-2 mb-1">
                                         <span className={`font-black text-base uppercase tracking-tight block truncate ${isMapped ? 'text-white/90' : 'v-text-error'}`}>
-                                            {field}
+                                            {field.label}
                                         </span>
-                                        {REQUIRED_FIELDS.includes(field) ? (
+                                        {field.required ? (
                                             <span className="text-[10px] bg-error/20 text-error px-2 py-0.5 rounded-md font-bold uppercase tracking-wider">Zorunlu</span>
                                         ) : (
                                             <span className="text-[10px] bg-white/10 text-text-muted px-2 py-0.5 rounded-md font-bold uppercase tracking-wider">İsteğe Bağlı</span>
@@ -172,14 +171,14 @@ export default function ColumnMapper({ file, canonicalFields, onComplete, onCanc
                                             ? 'border-success/40 focus:border-success hover:border-success/60'
                                             : 'border-error focus:border-error v-text-error bg-error/5 hover:bg-error/10 shadow-error/20'
                                             }`}
-                                        value={mapping[field] || ''}
+                                        value={mapping[field.key] || ''}
                                         onChange={(e) => {
-                                            setMapping({ ...mapping, [field]: e.target.value });
+                                            setMapping({ ...mapping, [field.key]: e.target.value });
                                             setSaveStatus('idle');
                                         }}
                                     >
                                         <option value="" className="v-text-error font-bold">— LÜTFEN SÜTUN SEÇİN —</option>
-                                        {!REQUIRED_FIELDS.includes(field) && (
+                                        {!field.required && (
                                             <option value="— YOKTUR —" className="bg-bg-card text-accent font-bold">— YOKTUR —</option>
                                         )}
                                         {headers.map(h => <option key={h} value={h} className="bg-bg-card text-text-main">{h}</option>)}

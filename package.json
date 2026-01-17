@@ -1,7 +1,11 @@
 {
   "name": "kdv-kontrol",
   "private": true,
+<<<<<<< HEAD
   "version": "1.4.1",
+=======
+  "version": "1.4.0",
+>>>>>>> 2ada096f06cae820f3063c1a7ad1a523155fcc7e
   "type": "module",
   "main": "dist-electron/main.js",
   "scripts": {

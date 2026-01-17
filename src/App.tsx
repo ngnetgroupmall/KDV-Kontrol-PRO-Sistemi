@@ -1,23 +1,39 @@
 import React, { useState } from 'react';
-import { Upload, Check, AlertCircle, FileSpreadsheet, ArrowRight, Download, Filter, Layers, Beaker, X } from 'lucide-react';
+import { Upload, Check, AlertCircle, FileSpreadsheet, Download, Filter, Layers, Beaker, X, ChevronRight } from 'lucide-react';
 import ColumnMapper from './components/ColumnMapper';
 import ExclusionSettings from './components/ExclusionSettings';
+import AppShell from './components/layout/AppShell';
+import HeroSection from './components/dashboard/HeroSection';
+import FeatureCards from './components/dashboard/FeatureCards';
 import type { EInvoiceRow, AccountingRow } from './types';
 import * as XLSX from 'xlsx';
 import { createDemoData } from './utils/demo';
 import packageJson from '../package.json';
 
 const EINVOICE_FIELDS = [
-  'Fatura Tarihi', 'Fatura No', 'KDV Tutarı', 'GİB Fatura Türü',
-  'Ödeme Şekli', 'Para Birimi', 'Döviz Kuru', 'Müşteri', 'Statü', 'Geçerlilik Durumu'
+  { key: 'Fatura Tarihi', label: 'Fatura Tarihi', required: true },
+  { key: 'Fatura No', label: 'Fatura No', required: true },
+  { key: 'KDV Tutarı', label: 'KDV Tutarı', required: true },
+  { key: 'GİB Fatura Türü', label: 'GİB Fatura Türü', required: false },
+  { key: 'Ödeme Şekli', label: 'Ödeme Şekli', required: false },
+  { key: 'Para Birimi', label: 'Para Birimi', required: false },
+  { key: 'Döviz Kuru', label: 'Döviz Kuru', required: false },
+  { key: 'Müşteri', label: 'Müşteri', required: false },
+  { key: 'Statü', label: 'Statü', required: false },
+  { key: 'Geçerlilik Durumu', label: 'Geçerlilik Durumu', required: false }
 ];
 
 const ACCOUNTING_FIELDS = [
-  'Tarih', 'Ref.No', 'Fatura No', 'Açıklama', 'Alacak Tutarı'
+  { key: 'Tarih', label: 'Tarih', required: true },
+  { key: 'Ref.No', label: 'Ref.No', required: false },
+  { key: 'Fatura No', label: 'Fatura No', required: true },
+  { key: 'Açıklama', label: 'Açıklama', required: false },
+  { key: 'Alacak Tutarı', label: 'Alacak Tutarı', required: true }
 ];
 
 export default function App() {
-  const [step, setStep] = useState(0);
+  const [activeTab, setActiveTab] = useState('dashboard');
+  const [step, setStep] = useState(0); // 0: Idle, 1: E-Invoice, 2: Exclusion, 3: Accounting, 5: Report
   const [eFiles, setEFiles] = useState<File[]>([]);
   const [accFiles, setAccFiles] = useState<File[]>([]);
 
@@ -33,7 +49,6 @@ export default function App() {
   const [updateInfo, setUpdateInfo] = useState<{ message: string, progress?: number, downloaded: boolean } | null>(null);
 
   React.useEffect(() => {
-    // Listen for update messages from main process
     const { ipcRenderer } = (window as any).require ? (window as any).require('electron') : { ipcRenderer: null };
     if (!ipcRenderer) return;
 
@@ -114,7 +129,7 @@ export default function App() {
     setEInvoiceData([]);
     setAccountingData([]);
     setReports(null);
-    setStep(0);
+    setStep(1); // Go back to start of wizard
     setCurrentFileIndex(0);
     setError(null);
   };
@@ -148,43 +163,177 @@ export default function App() {
     else setAccFiles([file]);
   };
 
-  return (
-    <div className="min-h-screen p-4 flex flex-col items-center min-w-[1200px] overflow-x-auto">
-      <header id="main-header" className="v-grid-header py-6 px-12 border-b border-white/10 bg-bg-card/40 backdrop-blur-2xl sticky top-0 z-[100] shadow-2xl">
-        <div className="v-flex-row v-justify-self-start gap-5">
-          <div className="w-14 h-14 bg-primary rounded-2xl flex items-center justify-center shadow-lg shadow-primary/40 ring-2 ring-primary/20">
-            <FileSpreadsheet className="text-white w-8 h-8" />
-          </div>
-          <div>
-            <h1 className="text-3xl font-black tracking-tighter leading-none text-white uppercase italic text-nowrap">KDV Kontrol <span className="text-primary not-italic">PRO</span></h1>
-            <p className="text-text-muted text-[10px] font-black uppercase tracking-[0.4em] mt-2 opacity-80 text-nowrap">NG NET GROUP SOLUTIONS</p>
-          </div>
-        </div>
+  const handleStart = () => {
+    setActiveTab('upload');
+    setStep(1);
+  };
 
-        <div className="v-flex-row gap-10 v-justify-self-end">
-          <img src="./logo.png" alt="NG NET GROUP" className="h-12 w-auto object-contain brightness-150 drop-shadow-[0_0_25px_rgba(255,255,255,0.4)]" />
-          {step > 0 && (
-            <button
-              onClick={resetAll}
-              className="btn-secondary v-flex-row gap-4 px-10 py-3.5 text-xs font-black uppercase tracking-widest hover:brightness-125 hover:scale-105 active:scale-95 shadow-2xl shadow-error/40"
-              title="Çıkış - İlk Ekrana Dön"
-            >
-              <X size={22} strokeWidth={4} /> Çıkış
-            </button>
+  return (
+    <AppShell activeTab={activeTab} onTabChange={setActiveTab} version={packageJson.version}>
+      {/* Global Loading Overlay */}
+      {loading && (
+        <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md z-[100] flex flex-col items-center justify-center gap-6 animate-in fade-in duration-300">
+          <div className="relative">
+            <div className="w-20 h-20 border-4 border-blue-500/30 rounded-full animate-spin"></div>
+            <div className="w-20 h-20 border-4 border-blue-500 border-t-transparent rounded-full animate-spin absolute top-0 left-0"></div>
+          </div>
+          <p className="text-xl font-bold text-white tracking-wide animate-pulse">İşleminiz Yapılıyor...</p>
+        </div>
+      )}
+
+      {/* Global Error Toast */}
+      {error && (
+        <div className="fixed top-24 right-8 z-[100] bg-red-500 text-white px-6 py-4 rounded-xl shadow-2xl flex items-center gap-4 animate-in slide-in-from-right duration-300">
+          <AlertCircle size={24} />
+          <div>
+            <p className="font-bold">Bir Hata Oluştu</p>
+            <p className="text-sm opacity-90">{error}</p>
+          </div>
+          <button onClick={() => setError(null)} className="ml-4 hover:bg-white/20 p-1 rounded transition-colors">✕</button>
+        </div>
+      )}
+
+      {/* Dashboard View */}
+      {activeTab === 'dashboard' && (
+        <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+          <HeroSection onStart={handleStart} />
+          <FeatureCards onAction={(id) => {
+            if (id === 'upload') handleStart();
+            else setActiveTab(id);
+          }} />
+        </div>
+      )}
+
+      {/* Upload / Wizard View */}
+      {activeTab === 'upload' && (
+        <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+          {step === 1 && (
+            eFiles.length === 0 ? (
+              <div className="max-w-4xl mx-auto">
+                <div className="mb-8 flex items-center justify-between">
+                  <div>
+                    <h2 className="text-3xl font-bold text-white mb-2">E-Fatura Yükleme</h2>
+                    <p className="text-slate-400">GİB veya Entegratör portalından indirdiğiniz Excel listesini yükleyin.</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="w-8 h-8 rounded-full bg-blue-500 text-white flex items-center justify-center font-bold">1</span>
+                    <div className="w-12 h-1 bg-slate-700 rounded-full"></div>
+                    <span className="w-8 h-8 rounded-full bg-slate-700 text-slate-400 flex items-center justify-center font-bold">2</span>
+                    <div className="w-12 h-1 bg-slate-700 rounded-full"></div>
+                    <span className="w-8 h-8 rounded-full bg-slate-700 text-slate-400 flex items-center justify-center font-bold">3</span>
+                  </div>
+                </div>
+
+                <FileLoader type="EINVOICE" onFiles={(f) => setEFiles(f)} />
+
+                <div className="mt-8 text-center">
+                  <button
+                    onClick={() => handleDemoData('EINVOICE')}
+                    className="text-slate-500 hover:text-blue-400 text-sm font-medium transition-colors flex items-center justify-center gap-2 mx-auto"
+                  >
+                    <Beaker size={16} /> Örnek veri ile dene
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="max-w-6xl mx-auto">
+                <ColumnMapper
+                  file={eFiles[currentFileIndex]}
+                  canonicalFields={EINVOICE_FIELDS}
+                  onComplete={processEFile}
+                  onCancel={() => { setEFiles([]); setStep(1); }}
+                />
+              </div>
+            )
+          )}
+
+          {step === 2 && (
+            <div className="max-w-6xl mx-auto">
+              <ExclusionSettings
+                data={eInvoiceData}
+                onComplete={(statuses, validities) => {
+                  setExcludedStatuses(statuses);
+                  setExcludedValidities(validities);
+                  setEInvoiceData(prev => prev.filter((row: any) =>
+                    !statuses.includes(row["Statü"]) && !validities.includes(row["Geçerlilik Durumu"])
+                  ));
+                  setStep(3);
+                  setCurrentFileIndex(0);
+                }}
+                onBack={() => { setStep(1); setEFiles([]); }}
+              />
+            </div>
+          )}
+
+          {step === 3 && (
+            accFiles.length === 0 ? (
+              <div className="max-w-4xl mx-auto">
+                <div className="mb-8 flex items-center justify-between">
+                  <div>
+                    <h2 className="text-3xl font-bold text-white mb-2">Muhasebe Kayıtları</h2>
+                    <p className="text-slate-400">Muhasebe programınızdan aldığınız muavin dökümünü yükleyin.</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="w-8 h-8 rounded-full bg-green-500 text-white flex items-center justify-center font-bold"><Check size={16} /></span>
+                    <div className="w-12 h-1 bg-blue-500 rounded-full"></div>
+                    <span className="w-8 h-8 rounded-full bg-blue-500 text-white flex items-center justify-center font-bold">2</span>
+                    <div className="w-12 h-1 bg-slate-700 rounded-full"></div>
+                    <span className="w-8 h-8 rounded-full bg-slate-700 text-slate-400 flex items-center justify-center font-bold">3</span>
+                  </div>
+                </div>
+
+                <FileLoader type="ACCOUNTING" onFiles={(f) => setAccFiles(f)} />
+
+                <div className="mt-8 text-center">
+                  <button
+                    onClick={() => handleDemoData('ACCOUNTING')}
+                    className="text-slate-500 hover:text-blue-400 text-sm font-medium transition-colors flex items-center justify-center gap-2 mx-auto"
+                  >
+                    <Beaker size={16} /> Örnek veri ile dene
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="max-w-6xl mx-auto">
+                <ColumnMapper
+                  file={accFiles[currentFileIndex]}
+                  canonicalFields={ACCOUNTING_FIELDS}
+                  onComplete={processAccFile}
+                  onCancel={() => { setAccFiles([]); setStep(3); }}
+                />
+              </div>
+            )
+          )}
+
+          {step === 5 && reports && (
+            <ReportView reports={reports} onReset={resetAll} />
           )}
         </div>
-      </header>
+      )}
 
-      {updateInfo && (
-        <div className={`fixed bottom-8 left-8 z-[110] px-6 py-4 rounded-2xl shadow-2xl flex items-center gap-4 animate-in slide-in-from-left duration-500 border-2 ${updateInfo.downloaded ? 'bg-success text-white border-success/20' : 'bg-bg-card/90 backdrop-blur-md text-white border-white/10'}`}>
-          <div className="w-10 h-10 rounded-xl bg-primary/20 flex items-center justify-center shrink-0">
-            {updateInfo.downloaded ? <Check size={20} className="text-white" /> : <Layers size={20} className="text-primary" />}
+      {/* Placeholders for other tabs */}
+      {activeTab === 'reconciliation' && (
+        <div className="flex flex-col items-center justify-center h-[60vh] text-center">
+          <div className="w-24 h-24 bg-slate-800 rounded-full flex items-center justify-center mb-6 animate-bounce">
+            <Layers className="text-slate-600 w-12 h-12" />
           </div>
-          <div className="min-w-[200px]">
-            <p className="font-bold text-sm leading-tight">{updateInfo.message}</p>
+          <h2 className="text-2xl font-bold text-white mb-2">Akıllı Ayrıştırma Modülü</h2>
+          <p className="text-slate-400 max-w-md">Bu modül şu anda Hızlı Yükleme akışı içerisine entegre edilmiştir. Dosya yükleme aşamasında otomatik çalışır.</p>
+          <button onClick={handleStart} className="btn-primary mt-8">Analizi Başlat</button>
+        </div>
+      )}
+
+      {/* Update Info Toast */}
+      {updateInfo && (
+        <div className={`fixed bottom-8 right-8 z-[110] px-6 py-4 rounded-xl shadow-2xl flex items-center gap-4 animate-in slide-in-from-bottom duration-500 border ${updateInfo.downloaded ? 'bg-green-500 text-white border-green-600' : 'bg-slate-800 text-white border-slate-700'}`}>
+          <div className="w-10 h-10 rounded-lg bg-white/10 flex items-center justify-center shrink-0">
+            {updateInfo.downloaded ? <Check size={20} className="text-white" /> : <Layers size={20} className="text-blue-400" />}
+          </div>
+          <div>
+            <p className="font-bold text-sm">{updateInfo.message}</p>
             {updateInfo.progress !== undefined && updateInfo.progress < 100 && (
-              <div className="w-full h-1.5 bg-white/10 rounded-full mt-2 overflow-hidden">
-                <div className="h-full bg-primary transition-all duration-300" style={{ width: `${updateInfo.progress}%` }}></div>
+              <div className="w-full h-1 bg-white/20 rounded-full mt-2 overflow-hidden">
+                <div className="h-full bg-blue-500 transition-all duration-300" style={{ width: `${updateInfo.progress}%` }}></div>
               </div>
             )}
           </div>
@@ -194,164 +343,20 @@ export default function App() {
                 const { ipcRenderer } = (window as any).require('electron');
                 ipcRenderer.send('restart-app');
               }}
-              className="btn-primary !py-2 !px-4 !text-xs !bg-white !text-success !border-white hover:!bg-white/90"
+              className="px-3 py-1 bg-white text-green-600 rounded-lg text-xs font-bold hover:bg-white/90"
             >
-              Şimdi Güncelle
+              Yeniden Başlat
             </button>
           )}
-          <button onClick={() => setUpdateInfo(null)} className="opacity-40 hover:opacity-100 transition-opacity">✕</button>
+          <button onClick={() => setUpdateInfo(null)} className="opacity-50 hover:opacity-100">✕</button>
         </div>
       )}
 
-      {loading && (
-        <div className="fixed inset-0 bg-bg-main/90 backdrop-blur-md z-50 flex flex-col items-center justify-center gap-6">
-          <div className="relative">
-            <div className="w-16 h-16 border-4 border-primary/20 rounded-full"></div>
-            <div className="w-16 h-16 border-4 border-primary border-t-transparent rounded-full animate-spin absolute top-0 left-0"></div>
-          </div>
-          <p className="text-2xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">Veriler Analiz Ediliyor...</p>
-        </div>
-      )}
-
-      {error && (
-        <div className="fixed top-8 right-8 z-[100] bg-error text-white px-6 py-4 rounded-2xl shadow-2xl flex items-center gap-4 animate-bounce">
-          <AlertCircle size={24} />
-          <div>
-            <p className="font-bold">Bir Hata Oluştu</p>
-            <p className="text-sm opacity-90">{error}</p>
-          </div>
-          <button onClick={() => setError(null)} className="ml-4 hover:scale-110 transition-transform">✕</button>
-        </div>
-      )}
-
-      <main className="w-full max-w-7xl fade-in pb-20 px-4">
-        {step === 0 && <Landing version={packageJson.version} onNext={() => setStep(1)} />}
-
-        {step === 1 && (
-          eFiles.length === 0 ? (
-            <div className="flex flex-col gap-6">
-              <FileLoader type="EINVOICE" onFiles={(f) => setEFiles(f)} />
-              <button
-                onClick={() => handleDemoData('EINVOICE')}
-                className="flex items-center gap-2 text-text-muted hover:text-accent self-center transition-colors text-sm font-medium"
-              >
-                <Beaker size={16} /> Örnek E-Fatura verisi ile dene
-              </button>
-            </div>
-          ) : (
-            <ColumnMapper
-              file={eFiles[currentFileIndex]}
-              canonicalFields={EINVOICE_FIELDS}
-              onComplete={processEFile}
-              onCancel={() => setStep(0)}
-            />
-          )
-        )}
-
-        {step === 2 && (
-          <ExclusionSettings
-            data={eInvoiceData}
-            onComplete={(statuses, validities) => {
-              setExcludedStatuses(statuses);
-              setExcludedValidities(validities);
-              setEInvoiceData(prev => prev.filter((row: any) =>
-                !statuses.includes(row["Statü"]) && !validities.includes(row["Geçerlilik Durumu"])
-              ));
-              setStep(3);
-              setCurrentFileIndex(0);
-            }}
-            onBack={() => {
-              setStep(1);
-            }}
-          />
-        )}
-
-        {step === 3 && (
-          accFiles.length === 0 ? (
-            <div className="flex flex-col gap-6">
-              <FileLoader type="ACCOUNTING" onFiles={(f) => setAccFiles(f)} />
-              <button
-                onClick={() => handleDemoData('ACCOUNTING')}
-                className="flex items-center gap-2 text-text-muted hover:text-accent self-center transition-colors text-sm font-medium"
-              >
-                <Beaker size={16} /> Örnek Muhasebe verisi ile dene
-              </button>
-            </div>
-          ) : (
-            <ColumnMapper
-              file={accFiles[currentFileIndex]}
-              canonicalFields={ACCOUNTING_FIELDS}
-              onComplete={processAccFile}
-              onCancel={() => setStep(2)}
-            />
-          )
-        )}
-
-        {step === 5 && reports && <ReportView reports={reports} onReset={resetAll} />}
-      </main>
-    </div>
+    </AppShell>
   );
 }
 
-function Landing({ version, onNext }: { version: string, onNext: () => void }) {
-  return (
-    <div className="flex flex-col gap-12 w-full max-w-5xl py-12">
-      <div className="card glass text-center py-20 flex flex-col items-center gap-8 shadow-[0_0_50px_-12px_rgba(37,99,235,0.2)] border-white/5 relative overflow-hidden">
-        <div className="absolute top-0 right-0 p-8 opacity-10">
-          <Layers size={200} />
-        </div>
-        <div className="w-24 h-24 bg-primary/10 rounded-[2rem] flex items-center justify-center mb-4 border border-primary/20 shadow-inner relative z-10">
-          <FileSpreadsheet className="w-12 h-12 text-primary" />
-        </div>
-        <div className="relative z-10">
-          <h2 className="text-6xl font-black mb-6 tracking-tight">KDV Mutabakatı <br /><span className="text-primary">Artık Çok Daha Kolay.</span></h2>
-          <p className="max-w-2xl text-text-muted text-xl leading-relaxed mx-auto">
-            Excel dosyalarınızı tarayıcı içinde güvenle işleyin. <br />
-            Regex tabanlı fatura no ayrıştırma ve toleranslı KDV kontrolü ile hata payını sıfıra indirin.
-          </p>
-        </div>
-        <button onClick={onNext} className="btn-primary flex items-center gap-3 text-xl px-12 py-5 shadow-2xl shadow-primary/30 relative z-10">
-          Hemen Başla <ArrowRight size={24} />
-        </button>
-        <div className="absolute bottom-4 right-6 text-text-muted/40 text-[10px] font-black tracking-widest uppercase">
-          Versiyon v{version}
-        </div>
-      </div>
-
-      <div className="grid grid-cols-3 gap-8">
-        <div className="card glass p-8 border-white/5">
-          <div className="w-12 h-12 bg-primary/20 rounded-xl flex items-center justify-center mb-6">
-            <Upload className="text-primary" size={24} />
-          </div>
-          <h3 className="text-xl font-bold mb-3 text-white">1. Dosyaları Yükle</h3>
-          <p className="text-text-muted text-sm leading-relaxed">
-            E-Fatura listelerini (GİB/Portal) ve Muhasebe Excel dosyalarını sürükleyip bırakın.
-          </p>
-        </div>
-
-        <div className="card glass p-8 border-white/5">
-          <div className="w-12 h-12 bg-accent/20 rounded-xl flex items-center justify-center mb-6">
-            <Filter className="text-accent" size={24} />
-          </div>
-          <h3 className="text-xl font-bold mb-3 text-white">2. Akıllı Eşleştirme</h3>
-          <p className="text-text-muted text-sm leading-relaxed">
-            Sistem, karmaşık açıklama metinleri içinden fatura numaralarını otomatik olarak cımbızla çeker.
-          </p>
-        </div>
-
-        <div className="card glass p-8 border-white/5">
-          <div className="w-12 h-12 bg-success/20 rounded-xl flex items-center justify-center mb-6">
-            <Check className="text-success" size={24} />
-          </div>
-          <h3 className="text-xl font-bold mb-3 text-white">3. Farkları İndir</h3>
-          <p className="text-text-muted text-sm leading-relaxed">
-            Kuruşu kuruşuna KDV farklarını ve eksik kayıtları anlık rapor olarak Excel formatında indirin.
-          </p>
-        </div>
-      </div>
-    </div>
-  );
-}
+// --- Sub Components ---
 
 function FileLoader({ type, onFiles }: { type: 'EINVOICE' | 'ACCOUNTING', onFiles: (f: File[]) => void }) {
   const [files, setFiles] = useState<File[]>([]);
@@ -364,17 +369,11 @@ function FileLoader({ type, onFiles }: { type: 'EINVOICE' | 'ACCOUNTING', onFile
   };
 
   return (
-    <div className="wizard-step">
-      <div className="text-center mb-10">
-        <span className="bg-primary/10 text-primary px-4 py-1.5 rounded-full text-xs font-bold uppercase tracking-widest mb-4 inline-block">Adım {type === 'EINVOICE' ? '01' : '02'}</span>
-        <h3 className="text-4xl font-extrabold mb-3">{type === 'EINVOICE' ? 'E-Fatura Dosyaları' : 'Muhasebe Kayıtları'}</h3>
-        <p className="text-text-muted text-lg max-w-lg mx-auto">Sistem otomatik olarak kolonları tanımaya çalışacaktır.</p>
-      </div>
-
+    <div className="w-full">
       <div
         onDragOver={(e) => e.preventDefault()}
         onDrop={handleDrop}
-        className="card border-dashed border-2 border-white/10 py-16 flex flex-col items-center gap-6 hover:border-primary/50 transition-all cursor-pointer bg-white/[0.02] hover:bg-primary/[0.04] group rounded-3xl"
+        className="group relative border-2 border-dashed border-slate-700 hover:border-blue-500/50 rounded-3xl p-12 text-center transition-all duration-300 bg-slate-800/30 hover:bg-slate-800/50 cursor-pointer"
         onClick={() => {
           const input = document.createElement('input');
           input.type = 'file';
@@ -387,21 +386,32 @@ function FileLoader({ type, onFiles }: { type: 'EINVOICE' | 'ACCOUNTING', onFile
           input.click();
         }}
       >
-        <div className="w-16 h-16 bg-bg-main border border-white/5 rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform shadow-xl">
-          <Upload className="text-primary w-8 h-8" />
+        <div className="w-20 h-20 bg-slate-800 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-xl border border-slate-700 group-hover:scale-110 group-hover:border-blue-500/30 transition-all duration-300">
+          <Upload className="text-blue-500 w-10 h-10 group-hover:text-blue-400" />
         </div>
-        <div className="text-center">
-          <p className="font-bold text-xl mb-1">Dosyaları buraya bırakın</p>
-          <p className="text-text-muted font-medium">veya seçmek için tıklayın</p>
-        </div>
+        <h3 className="text-xl font-bold text-white mb-2">Dosyaları Buraya Sürükleyin</h3>
+        <p className="text-slate-400 text-sm">veya seçmek için tıklayın</p>
       </div>
 
       {files.length > 0 && (
-        <div className="space-y-3 mt-6">
+        <div className="grid gap-3 mt-6 animate-in slide-in-from-top-2">
           {files.map((f, i) => (
-            <div key={i} className="card py-4 px-6 flex justify-between items-center glass border-white/5 hover:bg-white/[0.03] transition-colors">
-              <span className="flex items-center gap-3 font-semibold"><FileSpreadsheet size={20} className="text-primary" /> {f.name}</span>
-              <button className="text-error font-bold text-xs uppercase tracking-wider hover:opacity-70" onClick={(e) => { e.stopPropagation(); setFiles(files.filter((_, idx) => idx !== i)); }}>Kaldır</button>
+            <div key={i} className="flex items-center justify-between p-4 bg-slate-800 border border-slate-700 rounded-xl">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-green-500/10 rounded-lg flex items-center justify-center">
+                  <FileSpreadsheet className="text-green-500 w-5 h-5" />
+                </div>
+                <div>
+                  <p className="text-sm font-bold text-white">{f.name}</p>
+                  <p className="text-xs text-slate-500">{(f.size / 1024).toFixed(1)} KB</p>
+                </div>
+              </div>
+              <button
+                onClick={(e) => { e.stopPropagation(); setFiles(files.filter((_, idx) => idx !== i)); }}
+                className="p-2 hover:bg-red-500/10 hover:text-red-500 rounded-lg text-slate-500 transition-colors"
+              >
+                <X size={18} />
+              </button>
             </div>
           ))}
         </div>
@@ -410,9 +420,9 @@ function FileLoader({ type, onFiles }: { type: 'EINVOICE' | 'ACCOUNTING', onFile
       <button
         disabled={files.length === 0}
         onClick={() => onFiles(files)}
-        className={`btn-primary self-center mt-10 px-16 py-4 rounded-2xl shadow-2xl transition-all duration-300 ${files.length > 0 ? 'scale-110 shadow-primary/40' : 'opacity-20'} text-lg`}
+        className={`w-full mt-8 btn-primary text-lg py-5 ${files.length === 0 ? 'opacity-50 cursor-not-allowed grayscale' : ''}`}
       >
-        Eşleştirmeye Başla
+        İşleme Başla <ChevronRight />
       </button>
     </div>
   );
@@ -420,6 +430,7 @@ function FileLoader({ type, onFiles }: { type: 'EINVOICE' | 'ACCOUNTING', onFile
 
 function ReportView({ reports, onReset }: { reports: any, onReset: () => void }) {
   const [activeTab, setActiveTab] = useState(1);
+  // ... (keeping existing logic for tabs data mapping)
 
   const downloadExcel = (data: any[], fileName: string) => {
     const formattedData = data.map(row => {
@@ -444,131 +455,106 @@ function ReportView({ reports, onReset }: { reports: any, onReset: () => void })
   };
 
   const tabs = [
-    { id: 1, label: 'E-Fatura var, Muhasebe yok', data: reports.report1, color: 'text-error', bgColor: 'bg-error/10' },
-    { id: 2, label: 'Muhasebe var, E-Fatura yok', data: reports.report2, color: 'text-warning', bgColor: 'bg-warning/10' },
-    { id: 3, label: 'KDV Farkları', data: reports.report3, color: 'text-accent', bgColor: 'bg-accent/10' },
-    { id: 4, label: 'Hatalı Muhasebe Kayıtları', data: reports.report4 || [], color: 'text-rose-400', bgColor: 'bg-rose-400/10' }
+    { id: 1, label: 'E-Fatura Eksik', data: reports.report1, color: 'text-red-400', badge: 'bg-red-500/10 text-red-400' },
+    { id: 2, label: 'Muhasebe Eksik', data: reports.report2, color: 'text-orange-400', badge: 'bg-orange-500/10 text-orange-400' },
+    { id: 3, label: 'Tutar Farkları', data: reports.report3, color: 'text-cyan-400', badge: 'bg-cyan-500/10 text-cyan-400' },
+    { id: 4, label: 'Hatalı Kayıtlar', data: reports.report4 || [], color: 'text-rose-400', badge: 'bg-rose-500/10 text-rose-400' }
   ];
 
   const currentTab = tabs.find(t => t.id === activeTab);
   const currentTabData = currentTab?.data || [];
 
   return (
-    <div className="w-full">
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+    <div className="space-y-6">
+      {/* New Header for Reports */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-3xl font-bold text-white mb-2">Mutabakat Sonucu</h2>
+          <p className="text-slate-400">Analiz tamamlandı. Aşağıdaki sekmelerden detayları inceleyebilirsiniz.</p>
+        </div>
+        <div className="flex gap-3">
+          <button onClick={onReset} className="btn-secondary text-sm">Yeni Analiz</button>
+          <button
+            onClick={() => {
+              const wb = XLSX.utils.book_new();
+              tabs.forEach(tab => {
+                if (tab.data.length > 0) {
+                  const ws = XLSX.utils.json_to_sheet(tab.data);
+                  XLSX.utils.book_append_sheet(wb, ws, tab.label.substring(0, 31));
+                }
+              });
+              XLSX.writeFile(wb, `Tam_Rapor_${Date.now()}.xlsx`);
+            }}
+            className="btn-primary text-sm px-6"
+          >
+            <Download size={18} /> Tümünü İndir
+          </button>
+        </div>
+      </div>
+
+      {/* Tabs Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         {tabs.map(tab => (
           <div
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
-            className={`card cursor-pointer transition-all border-2 flex flex-col justify-center min-h-[120px] p-6 ${activeTab === tab.id ? 'border-primary shadow-2xl shadow-primary/20 scale-[1.02] bg-primary/[0.03]' : 'border-white/5 hover:border-white/10'}`}
+            className={`glass-card p-6 cursor-pointer border-2 hover:border-blue-500/30 relative overflow-hidden ${activeTab === tab.id ? 'border-blue-500 bg-blue-500/10' : 'border-transparent'}`}
           >
-            <p className="text-text-muted font-bold text-[10px] uppercase tracking-widest mb-2">{tab.label}</p>
-            <div className={`text-4xl font-black ${tab.color} flex items-baseline gap-2`}>
-              {tab.data.length}
-              <span className="text-sm font-medium opacity-50">Kayıt</span>
+            <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">{tab.label}</h4>
+            <div className="flex items-baseline gap-2">
+              <span className={`text-4xl font-black ${tab.color}`}>{tab.data.length}</span>
+              <span className="text-slate-500 text-sm font-medium">Kayıt</span>
             </div>
+            {activeTab === tab.id && <div className="absolute bottom-0 left-0 w-full h-1 bg-blue-500"></div>}
           </div>
         ))}
       </div>
 
-      <div className="card glass p-0 border-white/5 shadow-2xl">
-        <div className="p-8 border-b border-white/5 flex justify-between items-center bg-white/[0.01]">
-          <div>
-            <h3 className="text-2xl font-black flex items-center gap-3">
-              <Filter size={24} className="text-primary" />
-              {currentTab?.label}
-            </h3>
-            <p className="text-text-muted font-medium mt-1">Hatalı bulunan kayıtların detaylı dökümü.</p>
+      {/* Data Table Panel */}
+      <div className="glass-card overflow-hidden min-h-[500px] flex flex-col">
+        <div className="p-6 border-b border-white/5 flex justify-between items-center bg-slate-800/30">
+          <div className="flex items-center gap-3">
+            <Filter className="text-blue-400" size={20} />
+            <h3 className="font-bold text-lg text-white">{currentTab?.label} Listesi</h3>
           </div>
-          <div className="flex gap-3 flex-wrap">
-            <button onClick={onReset} className="v-btn-back">← Başa Dön</button>
-            <button
-              onClick={() => {
-                const wb = XLSX.utils.book_new();
-                tabs.forEach(tab => {
-                  if (tab.data.length > 0) {
-                    const formatted = tab.data.map((r: any) => {
-                      const { originalRow, id, multipleInvoicesFound, validationError, ...rest } = r;
-                      const cleaned: any = {};
-                      Object.entries(rest).forEach(([k, v]) => {
-                        if (typeof v === 'string' && /^\d{2}\.\d{2}\.\d{4}$/.test(v)) {
-                          const [d, m, y] = v.split('.').map(Number);
-                          cleaned[k] = new Date(Date.UTC(y, m - 1, d));
-                        } else {
-                          cleaned[k] = v;
-                        }
-                      });
-                      return cleaned;
-                    });
-                    const ws = XLSX.utils.json_to_sheet(formatted, { cellDates: true });
-                    XLSX.utils.book_append_sheet(wb, ws, tab.label.substring(0, 31));
-                  }
-                });
-                XLSX.writeFile(wb, `Tum_Hatalar_${new Date().getTime()}.xlsx`);
-              }}
-              className="v-btn-save"
-            >
-              <Download size={18} /> Tüm Hataları İndir
-            </button>
-            <button
-              onClick={() => downloadExcel(currentTabData.map((r: any) => {
-                const { originalRow, id, multipleInvoicesFound, validationError, ...rest } = r;
-                return rest;
-              }), currentTab?.label || 'Rapor')}
-              className="v-btn-next !py-3 !px-8 !text-sm"
-            >
-              <Download size={18} /> Bu Sekmeyi İndir
-            </button>
-          </div>
+          <button
+            onClick={() => downloadExcel(currentTabData, currentTab?.label || 'Rapor')}
+            className="text-xs font-bold text-blue-400 hover:text-white transition-colors flex items-center gap-2"
+          >
+            <Download size={14} /> Bu Listeyi İndir
+          </button>
         </div>
 
-        <div className="overflow-x-auto max-h-[600px] scrollbar-thin scrollbar-thumb-white/10">
-          <table className="w-full text-left text-sm whitespace-nowrap">
-            <thead className="sticky top-0 bg-bg-card/95 backdrop-blur-md z-10">
+        <div className="flex-1 overflow-auto">
+          <table className="w-full text-left border-collapse">
+            <thead className="bg-slate-900/80 backdrop-blur sticky top-0 z-10">
               <tr>
-                {currentTabData.length > 0 && Object.keys(currentTabData[0]).filter(k => k !== 'originalRow' && k !== 'id' && k !== 'multipleInvoicesFound' && k !== 'validationError').map(key => (
-                  <th key={key} className="p-3 font-black border-2 border-white/10 text-text-muted uppercase tracking-tighter text-[10px] bg-bg-card/50">{key}</th>
+                {currentTabData.length > 0 && Object.keys(currentTabData[0]).filter(k => !['id', 'originalRow', 'validationError', 'multipleInvoicesFound'].includes(k)).map(key => (
+                  <th key={key} className="p-4 text-xs font-bold text-slate-400 uppercase tracking-wider border-b border-white/10">{key}</th>
                 ))}
               </tr>
             </thead>
-            <tbody className="divide-y-0">
+            <tbody className="divide-y divide-white/5 text-sm text-slate-300">
               {currentTabData.map((row: any, i: number) => (
-                <tr key={i} className="hover:bg-primary/[0.03] transition-colors group">
-                  {Object.keys(row).filter(k => k !== 'originalRow' && k !== 'id' && k !== 'multipleInvoicesFound' && k !== 'validationError').map(key => {
-                    const val = row[key];
-                    const isAmount = key.toLowerCase().includes('tutar') || key.toLowerCase().includes('alacak');
-                    const isDateField = key.toLowerCase().includes('tarih');
-                    let displayVal = String(val || '-');
-
-                    if (val instanceof Date) {
-                      displayVal = val.toLocaleDateString('tr-TR');
-                    } else if (typeof val === 'number') {
-                      if (isDateField && val > 30000 && val < 60000) {
-                        const date = new Date((val - 25569) * 86400 * 1000);
-                        displayVal = date.toLocaleDateString('tr-TR');
-                      } else {
-                        displayVal = val.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-                      }
-                    } else {
-                      displayVal = String(val || '-');
+                <tr key={i} className="hover:bg-blue-500/5 transition-colors">
+                  {Object.keys(row).filter(k => !['id', 'originalRow', 'validationError', 'multipleInvoicesFound'].includes(k)).map(key => {
+                    let val = row[key];
+                    if (val instanceof Date) val = val.toLocaleDateString('tr-TR');
+                    if (typeof val === 'number' && (key.toLowerCase().includes('tutar') || key.toLowerCase().includes('borç') || key.toLowerCase().includes('alacak'))) {
+                      val = val.toLocaleString('tr-TR', { minimumFractionDigits: 2 });
                     }
-
-                    return (
-                      <td key={key} className={`p-3 font-medium border-2 border-white/10 group-hover:border-primary/20 transition-colors whitespace-nowrap ${isAmount ? 'text-right' : ''}`}>
-                        {displayVal}
-                      </td>
-                    );
+                    return <td key={key} className="p-4 font-medium whitespace-nowrap">{val}</td>
                   })}
                 </tr>
               ))}
               {currentTabData.length === 0 && (
                 <tr>
-                  <td colSpan={10} className="p-32 text-center">
-                    <div className="w-20 h-20 bg-success/10 rounded-full flex items-center justify-center mx-auto mb-4">
-                      <Check className="text-success w-10 h-10" />
+                  <td colSpan={10} className="p-20 text-center">
+                    <div className="w-16 h-16 bg-green-500/10 rounded-full flex items-center justify-center mx-auto mb-4">
+                      <Check className="text-green-500 w-8 h-8" />
                     </div>
-                    <p className="text-xl font-bold">Harika! Hiç fark bulunamadı.</p>
-                    <p className="text-text-muted mt-2">Mutabakat dosyalarınız birbiriyle uyumlu görünüyor.</p>
+                    <p className="text-lg font-bold text-white">Kayıt Bulunamadı</p>
+                    <p className="text-slate-500">Bu kategoride herhangi bir fark yok.</p>
                   </td>
                 </tr>
               )}
