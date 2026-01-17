@@ -40,7 +40,7 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "KDV Kontrol PRO",
-      "artifactName": "${productName}-Setup-${version}.${ext}"
+      "artifactName": "KDV-Kontrol-PRO-Setup-${version}.${ext}"
     }
   },
   "dependencies": {
