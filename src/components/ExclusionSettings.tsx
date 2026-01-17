@@ -1,179 +1,112 @@
-import { useState, useEffect } from 'react';
-import { Check, ShieldX, ArrowRight } from 'lucide-react';
+import React from 'react';
+import { Filter, Check, ArrowLeft, ArrowRight, AlertCircle } from 'lucide-react';
 
 interface Props {
     data: any[];
-    onComplete: (excludedStatuses: string[], excludedValidities: string[]) => void;
+    onComplete: (statuses: string[], validities: string[]) => void;
     onBack: () => void;
 }
 
 export default function ExclusionSettings({ data, onComplete, onBack }: Props) {
-    const [uniqueStatuses, setUniqueStatuses] = useState<string[]>([]);
-    const [uniqueValidities, setUniqueValidities] = useState<string[]>([]);
-    const [excludedStatuses, setExcludedStatuses] = useState<Set<string>>(new Set());
-    const [excludedValidities, setExcludedValidities] = useState<Set<string>>(new Set());
+    const [selectedStatuses, setSelectedStatuses] = React.useState<string[]>([]);
+    const [selectedValidities, setSelectedValidities] = React.useState<string[]>([]);
 
-    useEffect(() => {
-        const statuses = new Set<string>();
-        const validities = new Set<string>();
+    const uniqueStatuses = Array.from(new Set(data.map(r => String(r["Statü"] || 'BELİRSİZ')))).sort();
+    const uniqueValidities = Array.from(new Set(data.map(r => String(r["Geçerlilik Durumu"] || 'BELİRSİZ')))).sort();
 
-        data.forEach(row => {
-            const s = row["Statü"];
-            const v = row["Geçerlilik Durumu"];
-            if (s) statuses.add(s);
-            if (v) validities.add(v);
-        });
-
-        setUniqueStatuses([...statuses].sort());
-        setUniqueValidities([...validities].sort());
-
-        // Auto-select common cancellation keywords
-        const cancelKeywords = ['İPTAL', 'IPTAL', 'RED', 'REDDEDILDI', 'GEÇERSİZ', 'GECERSIZ'];
-        const autoExcludedStatuses = new Set<string>();
-        const autoExcludedValidities = new Set<string>();
-
-        [...statuses].forEach(s => {
-            if (cancelKeywords.some(k => s.toUpperCase().includes(k))) {
-                autoExcludedStatuses.add(s);
-            }
-        });
-        [...validities].forEach(v => {
-            if (cancelKeywords.some(k => v.toUpperCase().includes(k))) {
-                autoExcludedValidities.add(v);
-            }
-        });
-
-        setExcludedStatuses(autoExcludedStatuses);
-        setExcludedValidities(autoExcludedValidities);
-    }, [data]);
-
-    const toggleStatus = (s: string) => {
-        const newSet = new Set(excludedStatuses);
-        if (newSet.has(s)) newSet.delete(s);
-        else newSet.add(s);
-        setExcludedStatuses(newSet);
+    const handleStatusToggle = (s: string) => {
+        setSelectedStatuses(prev => prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s]);
     };
 
-    const toggleValidity = (v: string) => {
-        const newSet = new Set(excludedValidities);
-        if (newSet.has(v)) newSet.delete(v);
-        else newSet.add(v);
-        setExcludedValidities(newSet);
+    const handleValidityToggle = (v: string) => {
+        setSelectedValidities(prev => prev.includes(v) ? prev.filter(x => x !== v) : [...prev, v]);
     };
 
-    const excludedCount = data.filter(row =>
-        excludedStatuses.has(row["Statü"]) || excludedValidities.has(row["Geçerlilik Durumu"])
+    // Auto-suggest exclusions
+    React.useEffect(() => {
+        const defaultExclStatuses = uniqueStatuses.filter(s =>
+            ['İPTAL', 'RED', 'İADE', 'GEÇERSİZ'].some(k => s.toLocaleUpperCase('tr-TR').includes(k))
+        );
+        const defaultExclValidities = uniqueValidities.filter(v =>
+            ['GEÇERSİZ', 'İPTAL'].some(k => v.toLocaleUpperCase('tr-TR').includes(k))
+        );
+        setSelectedStatuses(defaultExclStatuses);
+        setSelectedValidities(defaultExclValidities);
+    }, []);
+
+    const totalExcluded = data.filter(r =>
+        selectedStatuses.includes(r["Statü"]) || selectedValidities.includes(r["Geçerlilik Durumu"])
     ).length;
 
     return (
-        <div className="wizard-step">
-            <div className="card glass">
-                {/* Header */}
-                <div className="flex items-center gap-4 mb-8 pb-6 border-b border-white/10">
-                    <div className="w-14 h-14 bg-warning/10 rounded-2xl flex items-center justify-center border border-warning/20">
-                        <ShieldX className="w-7 h-7 text-warning" />
-                    </div>
-                    <div className="flex-1">
-                        <h3 className="text-2xl font-bold">Hariç Tutulacak Faturalar</h3>
-                        <p className="text-text-muted">İptal/Geçersiz faturaları karşılaştırmadan çıkarın.</p>
-                    </div>
-                    <div className="text-right bg-error/10 px-6 py-3 rounded-xl border border-error/20">
-                        <p className="text-3xl font-black text-error">{excludedCount}</p>
-                        <p className="text-text-muted text-sm">Hariç Tutulacak</p>
+        <div className="flex flex-col gap-8 animate-slide-up">
+            <div className="text-center">
+                <h3 className="text-3xl font-bold mb-2">Filtreleme Ayarları</h3>
+                <p className="text-text-muted italic">Mutabakat dışı bırakmak istediğiniz durumları seçin.</p>
+            </div>
+
+            <div className="grid lg:grid-cols-2 gap-8">
+                {/* Status Filters */}
+                <div className="glass-card p-8">
+                    <h4 className="flex items-center gap-3 font-bold mb-6 border-b border-white/5 pb-4">
+                        <Filter size={18} className="text-primary-light" />
+                        Statü Bazlı Filtrele
+                    </h4>
+                    <div className="grid gap-2">
+                        {uniqueStatuses.map(s => (
+                            <label key={s} className={`flex items-center justify-between p-4 rounded-xl border cursor-pointer transition-all ${selectedStatuses.includes(s) ? 'bg-danger/5 border-danger/20 text-danger' : 'bg-white/5 border-white/5 hover:border-white/10'}`}>
+                                <span className="text-sm font-semibold">{s}</span>
+                                <input
+                                    type="checkbox"
+                                    checked={selectedStatuses.includes(s)}
+                                    onChange={() => handleStatusToggle(s)}
+                                    className="w-5 h-5 rounded border-2 border-white/20 bg-transparent checked:bg-danger checked:border-danger accent-danger"
+                                />
+                            </label>
+                        ))}
                     </div>
                 </div>
 
-                {/* Simple Instructions */}
-                <div className="bg-primary/5 border border-primary/20 rounded-xl p-4 mb-6">
-                    <p className="text-sm text-text-muted">
-                        <span className="text-primary font-bold">İpucu:</span> Aşağıda işaretlediğiniz değerlere sahip faturalar karşılaştırmaya <span className="text-error font-bold">dahil edilmeyecek</span>.
-                        "İPTAL" ve "RED" içeren değerler otomatik seçilmiştir.
-                    </p>
+                {/* Validity Filters */}
+                <div className="glass-card p-8">
+                    <h4 className="flex items-center gap-3 font-bold mb-6 border-b border-white/5 pb-4">
+                        <Check size={18} className="text-success" />
+                        Geçerlilik Bazlı Filtrele
+                    </h4>
+                    <div className="grid gap-2">
+                        {uniqueValidities.map(v => (
+                            <label key={v} className={`flex items-center justify-between p-4 rounded-xl border cursor-pointer transition-all ${selectedValidities.includes(v) ? 'bg-danger/5 border-danger/20 text-danger' : 'bg-white/5 border-white/5 hover:border-white/10'}`}>
+                                <span className="text-sm font-semibold">{v}</span>
+                                <input
+                                    type="checkbox"
+                                    checked={selectedValidities.includes(v)}
+                                    onChange={() => handleValidityToggle(v)}
+                                    className="w-5 h-5 rounded border-2 border-white/20 bg-transparent checked:bg-danger checked:border-danger accent-danger"
+                                />
+                            </label>
+                        ))}
+                    </div>
                 </div>
+            </div>
 
-                {/* Two Column Layout */}
-                <div className="grid grid-cols-2 gap-6 mb-8">
-                    {/* Status Column */}
+            <div className="glass-card p-6 flex flex-wrap justify-between items-center bg-primary/5 border-primary/10">
+                <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 bg-primary/10 rounded-xl flex items-center justify-center">
+                        <AlertCircle className="text-primary-light" />
+                    </div>
                     <div>
-                        <h4 className="font-bold text-lg mb-4">📋 Statü Değerleri</h4>
-                        <div className="space-y-2 max-h-72 overflow-y-auto pr-2">
-                            {uniqueStatuses.map(s => (
-                                <label
-                                    key={s}
-                                    className={`flex items-center gap-4 p-4 rounded-xl cursor-pointer transition-all border-2 ${excludedStatuses.has(s)
-                                        ? 'bg-error/10 border-error/40'
-                                        : 'bg-bg-main border-border hover:border-primary/30'
-                                        }`}
-                                >
-                                    <input
-                                        type="checkbox"
-                                        checked={excludedStatuses.has(s)}
-                                        onChange={() => toggleStatus(s)}
-                                    />
-                                    <span className="font-medium flex-1">{s}</span>
-                                    {excludedStatuses.has(s) && (
-                                        <span className="text-xs bg-error/20 text-error px-2 py-1 rounded-full font-bold">HARİÇ</span>
-                                    )}
-                                </label>
-                            ))}
-                            {uniqueStatuses.length === 0 && (
-                                <p className="text-text-muted text-sm italic p-4">Statü verisi bulunamadı.</p>
-                            )}
-                        </div>
-                    </div>
-
-                    {/* Validity Column */}
-                    <div>
-                        <h4 className="font-bold text-lg mb-4">✅ Geçerlilik Durumu</h4>
-                        <div className="space-y-2 max-h-72 overflow-y-auto pr-2">
-                            {uniqueValidities.map(v => (
-                                <label
-                                    key={v}
-                                    className={`flex items-center gap-4 p-4 rounded-xl cursor-pointer transition-all border-2 ${excludedValidities.has(v)
-                                        ? 'bg-error/10 border-error/40'
-                                        : 'bg-bg-main border-border hover:border-primary/30'
-                                        }`}
-                                >
-                                    <input
-                                        type="checkbox"
-                                        checked={excludedValidities.has(v)}
-                                        onChange={() => toggleValidity(v)}
-                                    />
-                                    <span className="font-medium flex-1">{v}</span>
-                                    {excludedValidities.has(v) && (
-                                        <span className="text-xs bg-error/20 text-error px-2 py-1 rounded-full font-bold">HARİÇ</span>
-                                    )}
-                                </label>
-                            ))}
-                            {uniqueValidities.length === 0 && (
-                                <p className="text-text-muted text-sm italic p-4">Geçerlilik verisi bulunamadı.</p>
-                            )}
-                        </div>
+                        <p className="text-[10px] font-bold text-text-muted uppercase tracking-widest">Özet Bilgi</p>
+                        <p className="font-bold text-sm">
+                            <span className="text-danger">{totalExcluded}</span> / {data.length} kayıt mutabakat dışında bırakılacak.
+                        </p>
                     </div>
                 </div>
-
-                {/* Summary Bar */}
-                <div className="bg-gradient-to-r from-success/10 to-primary/10 rounded-xl p-5 mb-8 border border-success/20">
-                    <div className="flex items-center justify-between">
-                        <div>
-                            <p className="font-bold text-lg">
-                                Karşılaştırmaya <span className="text-success">{data.length - excludedCount}</span> fatura dahil edilecek
-                            </p>
-                            <p className="text-text-muted text-sm">Toplam {data.length} faturadan {excludedCount} tanesi hariç tutulacak.</p>
-                        </div>
-                    </div>
-                </div>
-
-                {/* Actions */}
-                <div className="flex justify-between items-center pt-6 border-t border-white/10">
-                    <button onClick={onBack} className="btn-secondary flex items-center gap-2">
-                        ← Geri
+                <div className="flex gap-4">
+                    <button onClick={onBack} className="btn-base btn-secondary">
+                        <ArrowLeft size={18} /> Geri Dön
                     </button>
-                    <button
-                        onClick={() => onComplete([...excludedStatuses], [...excludedValidities])}
-                        className="btn-primary flex items-center gap-2"
-                    >
-                        <Check size={18} /> Onayla ve Devam Et <ArrowRight size={18} />
+                    <button onClick={() => onComplete(selectedStatuses, selectedValidities)} className="btn-base btn-primary px-12">
+                        Hesaplamaya Geç <ArrowRight size={18} />
                     </button>
                 </div>
             </div>
