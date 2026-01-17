@@ -455,15 +455,15 @@ function ReportView({ reports, onReset }: { reports: any, onReset: () => void })
 
   return (
     <div className="w-full">
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-12">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
         {tabs.map(tab => (
           <div
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
-            className={`card cursor-pointer transition-all border-2 flex flex-col justify-center min-h-[160px] p-8 ${activeTab === tab.id ? 'border-primary shadow-2xl shadow-primary/20 scale-[1.02] bg-primary/[0.03]' : 'border-white/5 hover:border-white/10'}`}
+            className={`card cursor-pointer transition-all border-2 flex flex-col justify-center min-h-[120px] p-6 ${activeTab === tab.id ? 'border-primary shadow-2xl shadow-primary/20 scale-[1.02] bg-primary/[0.03]' : 'border-white/5 hover:border-white/10'}`}
           >
-            <p className="text-text-muted font-bold text-xs uppercase tracking-widest mb-3">{tab.label}</p>
-            <div className={`text-5xl font-black ${tab.color} flex items-baseline gap-2`}>
+            <p className="text-text-muted font-bold text-[10px] uppercase tracking-widest mb-2">{tab.label}</p>
+            <div className={`text-4xl font-black ${tab.color} flex items-baseline gap-2`}>
               {tab.data.length}
               <span className="text-sm font-medium opacity-50">Kayıt</span>
             </div>
@@ -527,7 +527,7 @@ function ReportView({ reports, onReset }: { reports: any, onReset: () => void })
             <thead className="sticky top-0 bg-bg-card/95 backdrop-blur-md z-10">
               <tr>
                 {currentTabData.length > 0 && Object.keys(currentTabData[0]).filter(k => k !== 'originalRow' && k !== 'id' && k !== 'multipleInvoicesFound' && k !== 'validationError').map(key => (
-                  <th key={key} className="p-4 font-black border-2 border-white/10 text-text-muted uppercase tracking-tighter text-xs bg-bg-card/50">{key}</th>
+                  <th key={key} className="p-3 font-black border-2 border-white/10 text-text-muted uppercase tracking-tighter text-[10px] bg-bg-card/50">{key}</th>
                 ))}
               </tr>
             </thead>
@@ -554,7 +554,7 @@ function ReportView({ reports, onReset }: { reports: any, onReset: () => void })
                     }
 
                     return (
-                      <td key={key} className={`p-4 font-medium border-2 border-white/10 group-hover:border-primary/20 transition-colors whitespace-nowrap ${isAmount ? 'text-right' : ''}`}>
+                      <td key={key} className={`p-3 font-medium border-2 border-white/10 group-hover:border-primary/20 transition-colors whitespace-nowrap ${isAmount ? 'text-right' : ''}`}>
                         {displayVal}
                       </td>
                     );
