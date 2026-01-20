@@ -40,28 +40,33 @@ export default function FeatureCards({ onAction }: FeatureCardsProps) {
                     </Button>
                 </Card>
 
-                {/* Purchase Control Module (Placeholder) */}
-                <Card className="flex flex-col items-start h-full relative overflow-hidden bg-slate-800/20 border-slate-800 opacity-60">
-                    <div className="absolute top-3 right-3 px-3 py-1 rounded-full bg-slate-800 border border-slate-700 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                        Yakında
+                {/* Purchase Control Module (Active) */}
+                <Card className="flex flex-col items-start h-full group relative overflow-hidden transition-all duration-300 hover:shadow-2xl hover:border-purple-500/50 border-purple-500/20">
+                    <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:opacity-20 transition-opacity">
+                        <Lock size={100} className="text-purple-500" />
                     </div>
 
-                    <div className="w-14 h-14 mb-6 rounded-2xl bg-slate-800 border border-slate-700 flex items-center justify-center">
-                        <Lock className="w-6 h-6 text-slate-500" />
+                    <div className="w-14 h-14 mb-6 rounded-2xl bg-purple-500/20 border border-purple-500/30 flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
+                        <ShoppingCart className="w-7 h-7 text-purple-400" />
                     </div>
 
-                    <h3 className="text-xl font-bold text-slate-300 mb-3">Alış KDV Kontrol</h3>
-                    <p className="text-slate-500 text-sm leading-relaxed mb-8 flex-1">
+                    <h3 className="text-xl font-bold text-white mb-3 group-hover:text-purple-400 transition-colors">Alış KDV Kontrol</h3>
+                    <p className="text-slate-400 text-sm leading-relaxed mb-8 flex-1">
                         Gelen E-Faturalarınızı Muhasebe (191) hesaplarınızla eşleştirin.
                         Mükerrer kayıtları ve eksik faturaları tespit edin.
                     </p>
 
                     <Button
-                        variant="ghost"
-                        disabled
-                        className="w-full justify-start cursor-not-allowed text-slate-500"
+                        variant="primary" // Or variant="secondary" if available, or just override via className if needed but Button component might handle colors. 
+                        // Assuming Button takes className or variant. Let's stick to primary but maybe style changes if needed. 
+                        // Actually 'variant="primary"' is usually blue. Let's see if we can override color. 
+                        // If not, primary is fine, or we can add a 'purple' variant later. 
+                        // For now, I'll use standard Button but maybe add className to tint it if possible, or just accept Blue button on Purple card.
+                        onClick={() => onAction('purchase')}
+                        rightIcon={<ChevronRight size={18} />}
+                        className="w-full justify-between"
                     >
-                        Hazırlanıyor...
+                        Modülü Başlat
                     </Button>
                 </Card>
             </div>

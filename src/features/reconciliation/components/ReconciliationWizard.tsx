@@ -7,6 +7,7 @@ import { useReconciliation } from '../hooks/useReconciliation';
 
 interface ReconciliationWizardProps {
     recon: ReturnType<typeof useReconciliation>;
+    mode: 'SALES' | 'PURCHASE';
 }
 
 const EINVOICE_FIELDS = [
@@ -24,13 +25,24 @@ const EINVOICE_FIELDS = [
     { key: 'Geçerlilik Durumu', label: 'Geçerlilik Durumu', required: false }
 ];
 
-const ACCOUNTING_VAT_FIELDS = [
+// SALES (Default)
+const SALES_ACCOUNTING_VAT_FIELDS = [
     { key: 'Tarih', label: 'Tarih', required: true },
     { key: 'Ref.No', label: 'Ref.No', required: false },
     { key: 'Fatura No', label: 'Fatura No', required: true },
     { key: 'VKN', label: 'VKN / TCKN', required: false },
     { key: 'Açıklama', label: 'Açıklama', required: false },
-    { key: 'Alacak Tutarı', label: 'KDV Tutarı (Borç/Alacak)', required: true }
+    { key: 'Alacak Tutarı', label: 'KDV Tutarı (Alacak)', required: true }
+];
+
+// PURCHASE
+const PURCHASE_ACCOUNTING_VAT_FIELDS = [
+    { key: 'Tarih', label: 'Tarih', required: true },
+    { key: 'Ref.No', label: 'Ref.No', required: false },
+    { key: 'Fatura No', label: 'Fatura No', required: true },
+    { key: 'VKN', label: 'VKN / TCKN', required: false },
+    { key: 'Açıklama', label: 'Açıklama', required: false },
+    { key: 'Borç Tutarı', label: 'KDV Tutarı (Borç)', required: true } // Changed field name
 ];
 
 const ACCOUNTING_MATRAH_FIELDS = [
@@ -42,10 +54,19 @@ const ACCOUNTING_MATRAH_FIELDS = [
     { key: 'Matrah', label: 'Matrah Tutarı (Borç/Alacak)', required: true }
 ];
 
-export function ReconciliationWizard({ recon }: ReconciliationWizardProps) {
+import { useEffect } from 'react';
+
+export function ReconciliationWizard({ recon, mode }: ReconciliationWizardProps) {
     const { state, actions } = recon;
 
     // Analysis Step
+    // Trigger analysis if not already running
+    useEffect(() => {
+        if (state.step === 5 && !state.loading && !state.reports && !state.error) {
+            actions.runReconciliation(mode);
+        }
+    }, [state.step, mode]);
+
     if (state.step === 5) {
         return (
             <div className="flex flex-col items-center justify-center min-h-[50vh] animate-fade-in">
@@ -53,7 +74,7 @@ export function ReconciliationWizard({ recon }: ReconciliationWizardProps) {
                     <div className="w-24 h-24 border-4 border-blue-600/30 rounded-full animate-spin"></div>
                     <div className="w-24 h-24 border-4 border-blue-600 border-t-transparent rounded-full animate-spin absolute top-0 left-0"></div>
                 </div>
-                <h2 className="text-2xl font-bold text-white mb-2">Veriler Analiz Ediliyor...</h2>
+                <h2 className="text-2xl font-bold text-white mb-2">{mode === 'SALES' ? 'Satış' : 'Alış'} Kayıtları Analiz Ediliyor...</h2>
                 <p className="text-slate-400">Yapay zeka algoritmalarımız kayıtları eşleştiriyor.</p>
             </div>
         );
@@ -83,7 +104,7 @@ export function ReconciliationWizard({ recon }: ReconciliationWizardProps) {
                         <MappingStep
                             file={state.eFiles[state.currentFileIndex]}
                             canonicalFields={EINVOICE_FIELDS}
-                            onComplete={actions.processEFile}
+                            onComplete={(mapping, headerIndex) => actions.processEFile(mapping, headerIndex, mode)}
                             onCancel={() => { actions.setEFiles([]); actions.setStep(1); }}
                         />
                     )
@@ -111,8 +132,8 @@ export function ReconciliationWizard({ recon }: ReconciliationWizardProps) {
                     ) : (
                         <MappingStep
                             file={state.accFiles[state.currentFileIndex]}
-                            canonicalFields={ACCOUNTING_VAT_FIELDS}
-                            onComplete={actions.processAccFile}
+                            canonicalFields={mode === 'SALES' ? SALES_ACCOUNTING_VAT_FIELDS : PURCHASE_ACCOUNTING_VAT_FIELDS}
+                            onComplete={(mapping, headerIndex) => actions.processAccFile(mapping, headerIndex, mode)}
                             onCancel={() => { actions.setAccFiles([]); actions.setStep(3); }}
                         />
                     )

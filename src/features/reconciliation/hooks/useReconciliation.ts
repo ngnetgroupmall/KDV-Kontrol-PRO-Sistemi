@@ -51,12 +51,12 @@ export function useReconciliation() {
         };
     }, []);
 
-    const processEFile = useCallback((mapping: Record<string, string>, headerRowIndex: number) => {
+    const processEFile = useCallback((mapping: Record<string, string>, headerRowIndex: number, mode: 'SALES' | 'PURCHASE') => {
         const worker = new Worker(new URL('../../../workers/reconciliation.worker.ts', import.meta.url), { type: 'module' });
         setLoading(true);
         worker.postMessage({
             type: 'PARSE_EXCEL',
-            payload: { file: eFiles[currentFileIndex], mapping, fileType: 'EINVOICE', fileName: eFiles[currentFileIndex].name, headerRowIndex }
+            payload: { file: eFiles[currentFileIndex], mapping, fileType: 'EINVOICE', fileName: eFiles[currentFileIndex].name, headerRowIndex, mode }
         });
 
         worker.onmessage = (e) => {
@@ -76,12 +76,12 @@ export function useReconciliation() {
         };
     }, [eFiles, currentFileIndex]);
 
-    const processAccFile = useCallback((mapping: Record<string, string>, headerRowIndex: number) => {
+    const processAccFile = useCallback((mapping: Record<string, string>, headerRowIndex: number, mode: 'SALES' | 'PURCHASE') => {
         const worker = new Worker(new URL('../../../workers/reconciliation.worker.ts', import.meta.url), { type: 'module' });
         setLoading(true);
         worker.postMessage({
             type: 'PARSE_EXCEL',
-            payload: { file: accFiles[currentFileIndex], mapping, fileType: 'ACCOUNTING', fileName: accFiles[currentFileIndex].name, headerRowIndex }
+            payload: { file: accFiles[currentFileIndex], mapping, fileType: 'ACCOUNTING', fileName: accFiles[currentFileIndex].name, headerRowIndex, mode }
         });
 
         worker.onmessage = (e) => {
@@ -109,7 +109,7 @@ export function useReconciliation() {
         setLoading(true);
         worker.postMessage({
             type: 'PARSE_EXCEL',
-            payload: { file: accMatrahFiles[currentFileIndex], mapping, fileType: 'ACCOUNTING', fileName: accMatrahFiles[currentFileIndex].name, headerRowIndex }
+            payload: { file: accMatrahFiles[currentFileIndex], mapping, fileType: 'ACCOUNTING', fileName: accMatrahFiles[currentFileIndex].name, headerRowIndex } // Matrah doesn't strictly need mode if field mapping handles it, but consistency is good.
         });
 
         worker.onmessage = (e) => {
@@ -131,7 +131,7 @@ export function useReconciliation() {
         };
     }, [accMatrahFiles, currentFileIndex]);
 
-    const runReconciliation = useCallback(() => {
+    const runReconciliation = useCallback((mode: 'SALES' | 'PURCHASE') => {
         if (eInvoiceData.length === 0 || (accountingData.length === 0 && accountingMatrahData.length === 0)) {
             setError("Veri setleri eksik.");
             return;
@@ -145,7 +145,8 @@ export function useReconciliation() {
                 eInvoices: eInvoiceData,
                 accountingVATRows: accountingData,
                 accountingMatrahRows: accountingMatrahData,
-                tolerance
+                tolerance,
+                mode
             }
         });
         worker.onmessage = (e) => {
@@ -195,11 +196,16 @@ export function useReconciliation() {
     }
 
     // Auto-run reconciliation when step reaches 5
-    useEffect(() => {
-        if (step === 5) {
-            runReconciliation();
-        }
-    }, [step, runReconciliation]);
+    // Auto-run reconciliation when step reaches 5
+    // Note: We need to know the mode here to run it automatically. 
+    // Since we don't store mode in hook state, we might need to expose runReconciliation to be called from UI manually or pass mode to hook.
+    // However, the cleanest way without refactoring everything is to remove auto-run effect here and let the Wizard trigger it, 
+    // OR add mode to state. For now, let's remove this effect and trigger it from the UI component which knows the mode.
+    // useEffect(() => {
+    //     if (step === 5) {
+    //         runReconciliation();
+    //     }
+    // }, [step, runReconciliation]);
 
     return {
         state: {

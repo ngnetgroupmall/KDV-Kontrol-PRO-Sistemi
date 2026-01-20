@@ -14,15 +14,18 @@ export default function App() {
 
   // Handle Tab Change Wrapper
   const handleTabChange = (tab: string) => {
+    // If switching to a reconciliation tab, reset state to ensure clean start
+    if (tab === 'sales' || tab === 'purchase') {
+      if (activeTab !== tab) actions.resetAll();
+    }
     setActiveTab(tab);
-    // Optional: Reset recon state if leaving flow? 
-    // actions.resetAll(); // Uncomment if we want to reset on navigation
   };
 
-  const handleStart = () => {
-    setActiveTab('upload');
-    actions.setStep(1);
+  const handleStart = (mode: 'SALES' | 'PURCHASE') => {
+    const targetTab = mode === 'SALES' ? 'sales' : 'purchase';
+    setActiveTab(targetTab);
     actions.resetAll();
+    actions.setStep(1);
   };
 
   return (
@@ -56,14 +59,15 @@ export default function App() {
         <div className="space-y-8 animate-fade-in">
           <HeroSection onStart={handleStart} />
           <FeatureCards onAction={(id) => {
-            if (id === 'upload') handleStart();
+            if (id === 'upload') handleStart('SALES'); // Legacy support
+            else if (id === 'purchase') handleStart('PURCHASE');
             else handleTabChange(id);
           }} />
         </div>
       )}
 
-      {(activeTab === 'upload') && (
-        <ReconciliationWizard recon={recon} />
+      {(activeTab === 'sales' || activeTab === 'purchase') && (
+        <ReconciliationWizard recon={recon} mode={activeTab === 'sales' ? 'SALES' : 'PURCHASE'} />
       )}
 
       {/* Reports (Legacy or History placeholder) */}

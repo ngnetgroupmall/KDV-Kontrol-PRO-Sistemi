@@ -42,7 +42,7 @@ self.onmessage = async (e: MessageEvent) => {
     const { type, payload } = e.data;
 
     if (type === 'PARSE_EXCEL') {
-        const { file, mapping, fileType, fileName, headerRowIndex = 0 } = payload;
+        const { file, mapping, fileType, fileName, headerRowIndex = 0, mode = 'SALES' } = payload;
         try {
             const data = await file.arrayBuffer();
             const workbook = XLSX.read(data);
@@ -134,7 +134,10 @@ self.onmessage = async (e: MessageEvent) => {
                     const aciklama = String(getValue('Açıklama') || '');
                     const combinedText = `${directNo} ${aciklama}`;
                     const { first, matches } = extractInvoiceNo(combinedText);
-                    const alacakTutari = parseTurkishNumber(getValue('Alacak Tutarı'));
+
+                    // Determine which column to read for VAT based on mode
+                    const vatAmountKey = mode === 'PURCHASE' ? 'Borç Tutarı' : 'Alacak Tutarı';
+                    const alacakTutari = parseTurkishNumber(getValue(vatAmountKey));
 
                     const rawMatrah = getValue('Matrah');
                     const matrahVal = typeof rawMatrah === 'number' ? rawMatrah : parseTurkishNumber(rawMatrah);

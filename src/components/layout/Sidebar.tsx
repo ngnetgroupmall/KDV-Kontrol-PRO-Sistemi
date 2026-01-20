@@ -1,4 +1,4 @@
-import { LayoutDashboard, Upload, LifeBuoy, Settings, ChevronLeft, ChevronRight } from 'lucide-react';
+import { LayoutDashboard, Upload, LifeBuoy, Settings, ChevronLeft, ChevronRight, ShoppingCart } from 'lucide-react';
 import { cn } from '../common/Button';
 import logo from '../../assets/logo.png';
 
@@ -13,7 +13,8 @@ interface SidebarProps {
 export default function Sidebar({ activeTab, onTabChange, version, isCollapsed, onCollapse }: SidebarProps) {
     const menuItems = [
         { id: 'dashboard', label: 'Genel Bakış', icon: LayoutDashboard },
-        { id: 'upload', label: 'Satış Kontrol', icon: Upload }, // Renamed from Hızlı Yükleme
+        { id: 'sales', label: 'Satış Kontrol', icon: Upload },
+        { id: 'purchase', label: 'Alış Kontrol', icon: ShoppingCart }, // Use Lock or ShoppingCart as appropriate
     ];
 
     const bottomItems = [
