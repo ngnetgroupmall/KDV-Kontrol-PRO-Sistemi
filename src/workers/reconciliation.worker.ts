@@ -178,7 +178,7 @@ self.onmessage = async (e: MessageEvent) => {
     }
 
     if (type === 'RECONCILE') {
-        const { eInvoices, accountingVATRows, accountingMatrahRows, tolerance = 0.25 } = payload;
+        const { eInvoices, accountingVATRows, accountingMatrahRows, tolerance = 0.25, mode = 'SALES' } = payload;
 
         // Aggregation for Accounting
         // Key: InvoiceNo OR InvoiceNo_VKN
@@ -262,10 +262,10 @@ self.onmessage = async (e: MessageEvent) => {
                 const eiMatrahConverted = isTry ? ei["Matrah"] : (ei["Matrah"] * kur);
 
                 const diffKdv = Math.abs(eiKdvConverted - accData.total);
-                const diffMatrah = Math.abs(eiMatrahConverted - accData.totalMatrah);
+                const diffMatrah = mode === 'PURCHASE' ? 0 : Math.abs(eiMatrahConverted - accData.totalMatrah);
 
-                // Report if either KDV or Matrah has diff
-                if (diffKdv > tolerance || diffMatrah > tolerance) {
+                // Report if either KDV or Matrah has diff (Matrah diff is forced 0 for PURCHASE)
+                if (diffKdv > tolerance || (mode !== 'PURCHASE' && diffMatrah > tolerance)) {
                     report3.push({
                         "Kaynak Dosya": ei["Kaynak Dosya"],
                         "Fatura Tarihi": ei["Fatura Tarihi"],
@@ -273,11 +273,11 @@ self.onmessage = async (e: MessageEvent) => {
                         "VKN": vkn, // Add VKN to report
                         "Para Birimi": ei["Para Birimi"] || 'TL',
                         "Kur": kur,
-                        "E-Fat Matrah": ei["Matrah"], // Display original
+                        "E-Fat Matrah": mode === 'PURCHASE' ? 0 : ei["Matrah"], // Hide or zero out Matrah for Purchase
                         "E-Fat KDV": ei["KDV Tutarı"], // Display original
-                        "Muh. Matrah": accData.totalMatrah,
+                        "Muh. Matrah": mode === 'PURCHASE' ? 0 : accData.totalMatrah,
                         "Muh. KDV": accData.total,
-                        "Matrah Farkı": eiMatrahConverted - accData.totalMatrah,
+                        "Matrah Farkı": mode === 'PURCHASE' ? 0 : (eiMatrahConverted - accData.totalMatrah),
                         "KDV Farkı": eiKdvConverted - accData.total
                     });
                 }

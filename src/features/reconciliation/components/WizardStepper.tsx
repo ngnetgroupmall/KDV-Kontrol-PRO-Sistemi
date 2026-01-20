@@ -3,16 +3,27 @@ import { cn } from '../../../components/common/Button';
 
 interface WizardStepperProps {
     currentStep: number;
+    mode?: 'SALES' | 'PURCHASE';
 }
 
-export function WizardStepper({ currentStep }: WizardStepperProps) {
-    const steps = [
-        { number: 1, label: 'E-Fat Yükle' },
-        { number: 2, label: 'Filtrele' },
-        { number: 3, label: 'Muh. KDV' },
-        { number: 4, label: 'Muh. Matrah' },
-        { number: 5, label: 'Analiz & Rapor' }
+export function WizardStepper({ currentStep, mode = 'SALES' }: WizardStepperProps) {
+    const allSteps = [
+        { number: 1, label: 'E-Fat Yükle', realStep: 1 },
+        { number: 2, label: 'Filtrele', realStep: 2 },
+        { number: 3, label: 'Muh. KDV', realStep: 3 },
+        { number: 4, label: 'Muh. Matrah', realStep: 4, mode: 'SALES' },
+        { number: 5, label: 'Analiz & Rapor', realStep: mode === 'PURCHASE' ? 5 : 5, displayStep: mode === 'PURCHASE' ? 4 : 5 }
     ];
+
+    // Filter steps based on mode
+    const steps = allSteps.filter(s => !s.mode || s.mode === mode).map((s, idx) => ({
+        ...s,
+        displayIndex: idx + 1
+    }));
+
+    // Find current display index
+    const currentDisplayIndex = steps.find(s => s.realStep === currentStep)?.displayIndex ||
+        (currentStep === 6 ? steps.length : 1);
 
     return (
         <div className="w-full max-w-4xl mx-auto mb-12">
@@ -21,16 +32,16 @@ export function WizardStepper({ currentStep }: WizardStepperProps) {
                 <div className="absolute left-0 top-1/2 -translate-y-1/2 w-full h-1 bg-slate-800 -z-10 rounded-full overflow-hidden">
                     <div
                         className="h-full bg-blue-600 transition-all duration-500 ease-out"
-                        style={{ width: `${((currentStep - 1) / (steps.length - 1)) * 100}%` }}
+                        style={{ width: `${((currentDisplayIndex - 1) / (steps.length - 1)) * 100}%` }}
                     ></div>
                 </div>
 
                 {steps.map((step) => {
-                    const isCompleted = currentStep > step.number;
-                    const isCurrent = currentStep === step.number;
+                    const isCompleted = currentStep > step.realStep || (currentStep === 6);
+                    const isCurrent = currentStep === step.realStep;
 
                     return (
-                        <div key={step.number} className="flex flex-col items-center gap-2 bg-[var(--bg-dark)] px-2">
+                        <div key={step.realStep} className="flex flex-col items-center gap-2 bg-[var(--bg-dark)] px-2">
                             <div
                                 className={cn(
                                     "w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm transition-all duration-300 border-4",
@@ -41,7 +52,7 @@ export function WizardStepper({ currentStep }: WizardStepperProps) {
                                             : "bg-slate-800 border-slate-700 text-slate-500"
                                 )}
                             >
-                                {isCompleted ? <Check size={18} /> : step.number}
+                                {isCompleted ? <Check size={18} /> : step.displayIndex}
                             </div>
                             <span
                                 className={cn(

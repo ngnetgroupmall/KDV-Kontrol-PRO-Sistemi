@@ -87,7 +87,7 @@ export function ReconciliationWizard({ recon, mode }: ReconciliationWizardProps)
 
     return (
         <div>
-            <WizardStepper currentStep={state.step} />
+            <WizardStepper currentStep={state.step} mode={mode} />
 
             <div className="mt-8">
                 {/* Step 1: E-Invoice Upload & Mapping */}
@@ -140,7 +140,7 @@ export function ReconciliationWizard({ recon, mode }: ReconciliationWizardProps)
                 )}
 
                 {/* Step 4: Accounting Matrah Upload & Mapping */}
-                {state.step === 4 && (
+                {state.step === 4 && mode === 'SALES' && (
                     state.accMatrahFiles.length === 0 ? (
                         <UploadStep
                             type="ACCOUNTING"

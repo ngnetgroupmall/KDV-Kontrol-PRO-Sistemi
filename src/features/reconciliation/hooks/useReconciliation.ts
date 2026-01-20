@@ -92,8 +92,12 @@ export function useReconciliation() {
                 if (currentFileIndex + 1 < accFiles.length) {
                     setCurrentFileIndex(currentFileIndex + 1);
                 } else {
-                    // Move to Step 4 (Matrah Upload)
-                    setStep(4);
+                    // Move to Step 4 (Matrah Upload) or Step 5 (Analysis) for Purchase
+                    if (mode === 'PURCHASE') {
+                        setStep(5);
+                    } else {
+                        setStep(4);
+                    }
                     setCurrentFileIndex(0);
                 }
             } else if (e.data.type === 'PARSE_ERROR') {
