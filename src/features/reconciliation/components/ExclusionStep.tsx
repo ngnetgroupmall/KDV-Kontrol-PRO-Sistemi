@@ -1,12 +1,12 @@
 import { useState, useEffect } from 'react';
-import { Check, ShieldX, ArrowRight, AlertCircle, Search } from 'lucide-react';
+import { Check, ShieldX, ArrowRight, Search } from 'lucide-react';
 import { Button } from '../../../components/common/Button';
 import { Card } from '../../../components/common/Card';
 import { cn } from '../../../components/common/Button';
 
 interface ExclusionStepProps {
     data: any[];
-    onComplete: (excludedStatuses: string[], excludedValidities: string[]) => void;
+    onComplete: (excludedStatuses: string[], excludedValidities: string[], tolerance: number) => void;
     onBack: () => void;
 }
 
@@ -15,6 +15,7 @@ export function ExclusionStep({ data, onComplete, onBack }: ExclusionStepProps) 
     const [uniqueValidities, setUniqueValidities] = useState<string[]>([]);
     const [excludedStatuses, setExcludedStatuses] = useState<Set<string>>(new Set());
     const [excludedValidities, setExcludedValidities] = useState<Set<string>>(new Set());
+    const [tolerance, setTolerance] = useState<number>(0.25);
 
     useEffect(() => {
         const statuses = new Set<string>();
@@ -77,8 +78,8 @@ export function ExclusionStep({ data, onComplete, onBack }: ExclusionStepProps) 
                         <ShieldX className="w-8 h-8 text-amber-500" />
                     </div>
                     <div className="flex-1">
-                        <h3 className="text-2xl font-bold text-white">Hariç Tutulacak Faturalar</h3>
-                        <p className="text-slate-400">İptal/Geçersiz faturaları karşılaştırmadan çıkararak daha doğru sonuçlar elde edin.</p>
+                        <h3 className="text-2xl font-bold text-white">Filtreleme Ayarları</h3>
+                        <p className="text-slate-400">Hariç tutulacak kayıtları ve hata toleransını belirleyin.</p>
                     </div>
                     <div className="text-right bg-red-500/10 px-6 py-4 rounded-xl border border-red-500/20">
                         <p className="text-4xl font-black text-red-500">{excludedCount}</p>
@@ -86,16 +87,28 @@ export function ExclusionStep({ data, onComplete, onBack }: ExclusionStepProps) 
                     </div>
                 </div>
 
-                {/* Simple Instructions */}
-                <div className="bg-blue-500/5 border border-blue-500/10 rounded-xl p-4 mb-8 flex items-start gap-3">
-                    <AlertCircle className="text-blue-500 w-5 h-5 shrink-0 mt-0.5" />
-                    <p className="text-sm text-slate-300">
-                        <span className="text-blue-400 font-bold">Nasıl Kullanılır?</span> Aşağıdaki listelerden işaretlediğiniz değerlere sahip faturalar analiz raporuna dahil edilmeyecektir.
-                        Sistem "İPTAL" ve "RED" içeren değerleri sizin için otomatik olarak seçmiştir.
-                    </p>
+                {/* Tolerance Settings */}
+                <div className="bg-slate-900/50 rounded-2xl p-6 border border-slate-800 mb-8">
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <h4 className="font-bold text-lg text-white mb-1">Hata Toleransı (TL)</h4>
+                            <p className="text-sm text-slate-400">Bu tutarın altındaki farklar "Hatalı" olarak işaretlenmeyecektir.</p>
+                        </div>
+                        <div className="flex items-center gap-3">
+                            <input
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                value={tolerance}
+                                onChange={(e) => setTolerance(parseFloat(e.target.value) || 0)}
+                                className="w-32 bg-slate-800 border border-slate-700 rounded-lg px-4 py-3 text-white font-bold text-right text-lg focus:outline-none focus:border-blue-500 transition-colors"
+                            />
+                            <span className="text-slate-500 font-bold">TL</span>
+                        </div>
+                    </div>
                 </div>
 
-                {/* Two Column Layout */}
+                {/* Two Column Layout for Status/Validity */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
                     {/* Status Column */}
                     <div className="bg-slate-900/50 rounded-2xl p-4 border border-slate-800">
@@ -103,7 +116,7 @@ export function ExclusionStep({ data, onComplete, onBack }: ExclusionStepProps) 
                             <h4 className="font-bold text-lg text-white">📋 Statü Değerleri</h4>
                             <span className="text-xs bg-slate-800 text-slate-400 px-2 py-1 rounded font-mono">{uniqueStatuses.length}</span>
                         </div>
-                        <div className="space-y-2 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
+                        <div className="space-y-2 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
                             {uniqueStatuses.map(s => (
                                 <div
                                     key={s}
@@ -142,7 +155,7 @@ export function ExclusionStep({ data, onComplete, onBack }: ExclusionStepProps) 
                             <h4 className="font-bold text-lg text-white">✅ Geçerlilik Durumu</h4>
                             <span className="text-xs bg-slate-800 text-slate-400 px-2 py-1 rounded font-mono">{uniqueValidities.length}</span>
                         </div>
-                        <div className="space-y-2 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
+                        <div className="space-y-2 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
                             {uniqueValidities.map(v => (
                                 <div
                                     key={v}
@@ -183,7 +196,7 @@ export function ExclusionStep({ data, onComplete, onBack }: ExclusionStepProps) 
                     </Button>
                     <Button
                         variant="primary"
-                        onClick={() => onComplete([...excludedStatuses], [...excludedValidities])}
+                        onClick={() => onComplete([...excludedStatuses], [...excludedValidities], tolerance)}
                         rightIcon={<ArrowRight size={18} />}
                     >
                         Onayla ve Devam Et

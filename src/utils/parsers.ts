@@ -41,6 +41,15 @@ export const extractInvoiceNo = (text: string): { matches: string[], first: stri
     };
 };
 
+export const normalizeVKN = (val: any): string | null => {
+    if (!val) return null;
+    const str = String(val).replace(/\D/g, ''); // Remove non-digits
+    // VKN is usually 10 digits, TCKN is 11. 
+    // We strictly check for length to avoid garbage matches
+    if (str.length === 10 || str.length === 11) return str;
+    return null;
+};
+
 export const formatDate = (date: Date | null): string => {
     if (!date) return '-';
     return date.toLocaleDateString('tr-TR');

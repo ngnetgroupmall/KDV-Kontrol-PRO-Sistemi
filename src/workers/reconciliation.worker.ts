@@ -1,5 +1,5 @@
 import * as XLSX from 'xlsx';
-import { normalizeString, parseTurkishNumber, extractInvoiceNo } from '../utils/parsers';
+import { normalizeString, parseTurkishNumber, extractInvoiceNo, normalizeVKN } from '../utils/parsers';
 
 // Helper to format Excel date serial numbers to DD.MM.YYYY
 const formatExcelDate = (val: any): string => {
@@ -99,22 +99,26 @@ self.onmessage = async (e: MessageEvent) => {
                 };
 
                 const fNo = normalizeString(getValue('Fatura No'));
+                const vkn = normalizeVKN(getValue('VKN'));
 
                 if (fileType === 'EINVOICE') {
                     // Filter out rows without invoice number (e.g. summary rows)
                     if (!fNo) return null;
 
-                    // Specific handling for KDV Tutarı which might have come from a multi-sum
-                    // getValue now returns a number directly if it was a multi-column sum, or raw value if single.
-                    // We need to be careful: parseTurkishNumber expects string or number.
+                    // Specific handling for KDV Tutarı and Matrah which might have come from a multi-sum
                     const rawKdv = getValue('KDV Tutarı');
                     const kdvVal = typeof rawKdv === 'number' ? rawKdv : parseTurkishNumber(rawKdv);
+
+                    const rawMatrah = getValue('Matrah');
+                    const matrahVal = typeof rawMatrah === 'number' ? rawMatrah : parseTurkishNumber(rawMatrah);
 
                     return {
                         id: `ei-${index}`,
                         "Kaynak Dosya": fileName,
                         "Fatura Tarihi": formatExcelDate(getValue('Fatura Tarihi')),
                         "Fatura No": fNo,
+                        "VKN": vkn,
+                        "Matrah": matrahVal,
                         "KDV Tutarı": kdvVal,
                         "GİB Fatura Türü": getValue('GİB Fatura Türü'),
                         "Ödeme Şekli": getValue('Ödeme Şekli'),
@@ -132,6 +136,9 @@ self.onmessage = async (e: MessageEvent) => {
                     const { first, matches } = extractInvoiceNo(combinedText);
                     const alacakTutari = parseTurkishNumber(getValue('Alacak Tutarı'));
 
+                    const rawMatrah = getValue('Matrah');
+                    const matrahVal = typeof rawMatrah === 'number' ? rawMatrah : parseTurkishNumber(rawMatrah);
+
                     // Validation: (Alacak > 0) AND (No valid 16-char invoice) AND (Not a summary/transfer row)
                     const normalizedAciklama = aciklama.toLocaleUpperCase('tr-TR');
                     const isSummaryRow = normalizedAciklama.includes('NAKLİ YEKÜN') ||
@@ -147,8 +154,10 @@ self.onmessage = async (e: MessageEvent) => {
                         "Tarih": formatExcelDate(getValue('Tarih')),
                         "Ref.No": getValue('Ref.No'),
                         "Fatura No": first || '',
+                        "VKN": vkn,
                         "Açıklama": aciklama,
                         "Alacak Tutarı": alacakTutari,
+                        "Matrah": matrahVal,
                         originalRow: row,
                         multipleInvoicesFound: matches.length > 1,
                         validationError
@@ -166,68 +175,116 @@ self.onmessage = async (e: MessageEvent) => {
     }
 
     if (type === 'RECONCILE') {
-        const { eInvoices, accountingRows, tolerance = 0.25 } = payload;
+        const { eInvoices, accountingVATRows, accountingMatrahRows, tolerance = 0.25 } = payload;
 
         // Aggregation for Accounting
-        const accAgg: Record<string, { total: number, rows: any[] }> = {};
+        // Key: InvoiceNo OR InvoiceNo_VKN
+        const accAgg: Record<string, { total: number, totalMatrah: number, rows: any[] }> = {};
         const report4: any[] = []; // Hatalı Muhasebe Kayıtları (Fatura no yok/hatalı)
 
-        console.log(`Worker: Reconciling ${eInvoices.length} E-Invoices and ${accountingRows.length} Accounting rows.`);
+        console.log(`Worker: Reconciling ${eInvoices.length} E-Invoices against ${accountingVATRows.length} VAT rows and ${accountingMatrahRows.length} Matrah rows.`);
 
-        accountingRows.forEach((row: any) => {
+        const addToAgg = (row: any, type: 'VAT' | 'MATRAH') => {
+            const fNo = row["Fatura No"];
+            const vkn = row["VKN"];
+            const amount = type === 'VAT' ? row["Alacak Tutarı"] : (row["Matrah"] || 0);
+
+            if (!fNo) return;
+
+            // If VKN is present, use specific key. Otherwise use generic fNo key.
+            const key = vkn ? `${fNo}_${vkn}` : fNo;
+
+            if (!accAgg[key]) accAgg[key] = { total: 0, totalMatrah: 0, rows: [] };
+
+            if (type === 'VAT') accAgg[key].total += amount;
+            else accAgg[key].totalMatrah += amount;
+
+            accAgg[key].rows.push({ ...row, source: type });
+        };
+
+        // Process VAT Rows
+        accountingVATRows.forEach((row: any) => {
             if (row.validationError) {
                 report4.push(row);
                 return;
             }
-
-            const fNo = row["Fatura No"];
-            const amount = row["Alacak Tutarı"];
-            if (!fNo) return;
-            if (!accAgg[fNo]) accAgg[fNo] = { total: 0, rows: [] };
-            accAgg[fNo].total += amount;
-            accAgg[fNo].rows.push(row);
+            addToAgg(row, 'VAT');
         });
 
-        console.log(`Worker: Aggregated ${Object.keys(accAgg).length} unique invoice numbers from accounting.`);
+        // Process Matrah Rows
+        accountingMatrahRows.forEach((row: any) => {
+            addToAgg(row, 'MATRAH');
+        });
+
+        console.log(`Worker: Aggregated ${Object.keys(accAgg).length} unique invoice keys from accounting.`);
 
         const report1: any[] = []; // E-Invoice var, Accounting yok
         const report2: any[] = []; // Accounting var, E-Invoice yok
         const report3: any[] = []; // KDV Farkları
 
-        const eiMap = new Map();
+        // We need to keep track of matched accounting keys to know which ones are left for Report 2
+        const matchedAccKeys = new Set<string>();
+
         eInvoices.forEach((ei: any) => {
             const fNo = ei["Fatura No"];
-            eiMap.set(fNo, ei);
-            if (!accAgg[fNo]) {
-                report1.push(ei);
-            }
-        });
+            const vkn = ei["VKN"];
 
-        Object.keys(accAgg).forEach(fno => {
-            const accData = accAgg[fno];
-            const ei = eiMap.get(fno);
-            if (!ei) {
-                accData.rows.forEach(r => report2.push(r));
+            // Try strict match first (with VKN), then fallback to invoice number only
+            const strictKey = vkn ? `${fNo}_${vkn}` : fNo;
+            const fallbackKey = fNo;
+
+            let matchedKey: string | null = null;
+            let accData = null;
+
+            if (accAgg[strictKey]) {
+                matchedKey = strictKey;
+                accData = accAgg[strictKey];
+            } else if (accAgg[fallbackKey]) {
+                // Soft Match: Accounting has entry with NO VKN, so we match by number only
+                matchedKey = fallbackKey;
+                accData = accAgg[fallbackKey];
+            }
+
+            if (!matchedKey || !accData) {
+                report1.push(ei);
             } else {
+                matchedAccKeys.add(matchedKey);
+
                 const currency = (ei["Para Birimi"] || '').toLocaleUpperCase('tr-TR');
                 const isTry = currency.includes('TRY') || currency.includes('TL');
                 const kur = ei["Döviz Kuru"] || 1;
-                const eiKdvConverted = isTry ? ei["KDV Tutarı"] : (ei["KDV Tutarı"] * kur);
 
-                const diff = Math.abs(eiKdvConverted - accData.total);
-                if (diff > tolerance) {
+                const eiKdvConverted = isTry ? ei["KDV Tutarı"] : (ei["KDV Tutarı"] * kur);
+                // Matrah is mostly in the same currency as KDV, so apply same conversion
+                const eiMatrahConverted = isTry ? ei["Matrah"] : (ei["Matrah"] * kur);
+
+                const diffKdv = Math.abs(eiKdvConverted - accData.total);
+                const diffMatrah = Math.abs(eiMatrahConverted - accData.totalMatrah);
+
+                // Report if either KDV or Matrah has diff
+                if (diffKdv > tolerance || diffMatrah > tolerance) {
                     report3.push({
                         "Kaynak Dosya": ei["Kaynak Dosya"],
                         "Fatura Tarihi": ei["Fatura Tarihi"],
-                        "Fatura No": fno,
+                        "Fatura No": fNo,
+                        "VKN": vkn, // Add VKN to report
                         "Para Birimi": ei["Para Birimi"] || 'TL',
                         "Kur": kur,
-                        "Orijinal KDV": ei["KDV Tutarı"],
-                        "E-fatura KDV (TL)": eiKdvConverted,
-                        "Muhasebe KDV Tutarı": accData.total,
-                        "Fark": eiKdvConverted - accData.total
+                        "E-Fat Matrah": ei["Matrah"], // Display original
+                        "E-Fat KDV": ei["KDV Tutarı"], // Display original
+                        "Muh. Matrah": accData.totalMatrah,
+                        "Muh. KDV": accData.total,
+                        "Matrah Farkı": eiMatrahConverted - accData.totalMatrah,
+                        "KDV Farkı": eiKdvConverted - accData.total
                     });
                 }
+            }
+        });
+
+        // Any accounting key not matched is Report 2 (Accounting only)
+        Object.keys(accAgg).forEach(key => {
+            if (!matchedAccKeys.has(key)) {
+                accAgg[key].rows.forEach(r => report2.push(r));
             }
         });
 

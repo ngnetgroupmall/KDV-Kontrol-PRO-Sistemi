@@ -1,16 +1,19 @@
-import { LayoutDashboard, Upload, LifeBuoy, Settings } from 'lucide-react';
+import { LayoutDashboard, Upload, LifeBuoy, Settings, ChevronLeft, ChevronRight } from 'lucide-react';
 import { cn } from '../common/Button';
+import logo from '../../assets/logo.png';
 
 interface SidebarProps {
     activeTab: string;
     onTabChange: (tab: string) => void;
     version: string;
+    isCollapsed: boolean;
+    onCollapse: (collapsed: boolean) => void;
 }
 
-export default function Sidebar({ activeTab, onTabChange, version }: SidebarProps) {
+export default function Sidebar({ activeTab, onTabChange, version, isCollapsed, onCollapse }: SidebarProps) {
     const menuItems = [
         { id: 'dashboard', label: 'Genel Bakış', icon: LayoutDashboard },
-        { id: 'upload', label: 'Hızlı Yükleme', icon: Upload }, // This is the Wizard flow
+        { id: 'upload', label: 'Satış Kontrol', icon: Upload }, // Renamed from Hızlı Yükleme
     ];
 
     const bottomItems = [
@@ -19,12 +22,17 @@ export default function Sidebar({ activeTab, onTabChange, version }: SidebarProp
     ];
 
     return (
-        <aside className="fixed left-0 top-0 h-full w-[var(--sidebar-width)] bg-[var(--bg-card)] border-r border-[var(--border-color)] flex flex-col z-50 transition-all duration-300">
+        <aside
+            className={cn(
+                "fixed left-0 top-0 h-full bg-[var(--bg-card)] border-r border-[var(--border-color)] flex flex-col z-50 transition-all duration-300",
+                isCollapsed ? "w-[80px]" : "w-[var(--sidebar-width)]"
+            )}
+        >
             {/* Brand */}
-            <div className="h-[var(--header-height)] flex items-center px-6 border-b border-[var(--border-color)]">
-                <div className="flex items-center gap-3">
-                    <img src="/logo.png" alt="Logo" className="w-10 h-10 object-contain rounded-lg shadow-lg shadow-blue-600/10" />
-                    <div>
+            <div className="h-[var(--header-height)] flex items-center px-4 md:px-6 border-b border-[var(--border-color)] overflow-hidden">
+                <div className="flex items-center gap-3 min-w-max">
+                    <img src={logo} alt="Logo" className="w-10 h-10 object-contain rounded-lg shadow-lg shadow-blue-600/10" />
+                    <div className={cn("transition-opacity duration-300", isCollapsed ? "opacity-0 w-0" : "opacity-100")}>
                         <span className="font-bold text-lg tracking-tight text-white block leading-none">KDV Kontrol</span>
                         <span className="text-[10px] text-blue-400 font-bold tracking-wider uppercase">Enterprise</span>
                     </div>
@@ -32,21 +40,25 @@ export default function Sidebar({ activeTab, onTabChange, version }: SidebarProp
             </div>
 
             {/* Menu */}
-            <div className="flex-1 py-6 flex flex-col gap-1 overflow-y-auto">
-                <p className="px-6 text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Ana Menü</p>
+            <div className="flex-1 py-6 flex flex-col gap-1 overflow-y-auto overflow-x-hidden">
+                {!isCollapsed && <p className="px-6 text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 animate-fade-in">Ana Menü</p>}
 
                 {menuItems.map((item) => (
                     <button
                         key={item.id}
                         onClick={() => onTabChange(item.id)}
                         className={cn(
-                            "nav-item group",
-                            activeTab === item.id && "active"
+                            "nav-item group relative mx-3",
+                            activeTab === item.id && "active",
+                            isCollapsed && "justify-center px-2"
                         )}
+                        title={isCollapsed ? item.label : undefined}
                     >
-                        <item.icon size={18} className={cn("transition-colors", activeTab === item.id ? "text-blue-400" : "text-slate-400 group-hover:text-white")} />
-                        <span>{item.label}</span>
-                        {activeTab === item.id && (
+                        <item.icon size={20} className={cn("transition-colors shrink-0", activeTab === item.id ? "text-blue-400" : "text-slate-400 group-hover:text-white")} />
+                        <span className={cn("transition-all duration-300 whitespace-nowrap overflow-hidden", isCollapsed ? "w-0 opacity-0" : "w-auto opacity-100")}>
+                            {item.label}
+                        </span>
+                        {!isCollapsed && activeTab === item.id && (
                             <div className="ml-auto w-1.5 h-1.5 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.8)]" />
                         )}
                     </button>
@@ -54,28 +66,40 @@ export default function Sidebar({ activeTab, onTabChange, version }: SidebarProp
 
                 <div className="my-4 mx-6 border-t border-[var(--border-color)]" />
 
-                <p className="px-6 text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Sistem</p>
+                {!isCollapsed && <p className="px-6 text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 animate-fade-in">Sistem</p>}
                 {bottomItems.map((item) => (
                     <button
                         key={item.id}
                         onClick={() => onTabChange(item.id)}
                         className={cn(
-                            "nav-item group",
-                            activeTab === item.id && "active"
+                            "nav-item group mx-3",
+                            activeTab === item.id && "active",
+                            isCollapsed && "justify-center px-2"
                         )}
+                        title={isCollapsed ? item.label : undefined}
                     >
-                        <item.icon size={18} className={cn("transition-colors", activeTab === item.id ? "text-blue-400" : "text-slate-400 group-hover:text-white")} />
-                        <span>{item.label}</span>
+                        <item.icon size={20} className={cn("transition-colors shrink-0", activeTab === item.id ? "text-blue-400" : "text-slate-400 group-hover:text-white")} />
+                        <span className={cn("transition-all duration-300 whitespace-nowrap overflow-hidden", isCollapsed ? "w-0 opacity-0" : "w-auto opacity-100")}>
+                            {item.label}
+                        </span>
                     </button>
                 ))}
             </div>
 
+            {/* Collapse Button */}
+            <button
+                onClick={() => onCollapse(!isCollapsed)}
+                className="absolute -right-3 top-20 bg-blue-600 text-white rounded-full p-1 shadow-lg hover:bg-blue-500 transition-colors z-[60]"
+            >
+                {isCollapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
+            </button>
+
             {/* Footer */}
-            <div className="p-4 m-4 rounded-xl bg-slate-900/50 border border-[var(--border-color)]">
-                <div className="flex items-center gap-3">
-                    <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                    <div>
-                        <p className="text-xs font-bold text-slate-300">Sistem Çevrimiçi</p>
+            <div className={cn("p-4 m-4 rounded-xl bg-slate-900/50 border border-[var(--border-color)] overflow-hidden transition-all duration-300", isCollapsed ? "p-2 m-2" : "")}>
+                <div className={cn("flex items-center gap-3", isCollapsed ? "justify-center" : "")}>
+                    <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+                    <div className={cn("transition-opacity duration-300", isCollapsed ? "hidden" : "block")}>
+                        <p className="text-xs font-bold text-slate-300 whitespace-nowrap">Sistem Çevrimiçi</p>
                         <p className="text-[10px] text-slate-500 font-mono mt-0.5">v{version}</p>
                     </div>
                 </div>

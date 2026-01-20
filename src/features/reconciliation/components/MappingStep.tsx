@@ -137,7 +137,7 @@ export function MappingStep({ file, canonicalFields, onComplete, onCancel }: Map
                 {/* Mapping Grid */}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-4 mb-8">
                     {canonicalFields.map(field => {
-                        const isMultiColumn = field.key === 'KDV Tutarı';
+                        const isMultiColumn = field.key === 'KDV Tutarı' || field.key === 'Matrah';
                         const currentVal = mapping[field.key] || '';
                         const selectedCols = isMultiColumn && currentVal.includes('|||')
                             ? currentVal.split('|||')

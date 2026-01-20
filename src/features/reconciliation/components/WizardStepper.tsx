@@ -7,11 +7,11 @@ interface WizardStepperProps {
 
 export function WizardStepper({ currentStep }: WizardStepperProps) {
     const steps = [
-        { number: 1, label: 'Dosya Yükleme' },
-        { number: 2, label: 'Sütun Eşleştirme' },
-        { number: 3, label: 'Filtreleme' },
-        { number: 4, label: 'Analiz' },
-        { number: 5, label: 'Sonuçlar' }
+        { number: 1, label: 'E-Fat Yükle' },
+        { number: 2, label: 'Filtrele' },
+        { number: 3, label: 'Muh. KDV' },
+        { number: 4, label: 'Muh. Matrah' },
+        { number: 5, label: 'Analiz & Rapor' }
     ];
 
     return (

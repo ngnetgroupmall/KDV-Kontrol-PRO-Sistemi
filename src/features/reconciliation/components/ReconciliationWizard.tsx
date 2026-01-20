@@ -12,6 +12,8 @@ interface ReconciliationWizardProps {
 const EINVOICE_FIELDS = [
     { key: 'Fatura Tarihi', label: 'Fatura Tarihi', required: true },
     { key: 'Fatura No', label: 'Fatura No', required: true },
+    { key: 'VKN', label: 'VKN / TCKN', required: false },
+    { key: 'Matrah', label: 'Mal Hizmet Tutarı (Matrah)', required: true },
     { key: 'KDV Tutarı', label: 'KDV Tutarı', required: true },
     { key: 'GİB Fatura Türü', label: 'GİB Fatura Türü', required: false },
     { key: 'Ödeme Şekli', label: 'Ödeme Şekli', required: false },
@@ -22,19 +24,29 @@ const EINVOICE_FIELDS = [
     { key: 'Geçerlilik Durumu', label: 'Geçerlilik Durumu', required: false }
 ];
 
-const ACCOUNTING_FIELDS = [
+const ACCOUNTING_VAT_FIELDS = [
     { key: 'Tarih', label: 'Tarih', required: true },
     { key: 'Ref.No', label: 'Ref.No', required: false },
     { key: 'Fatura No', label: 'Fatura No', required: true },
+    { key: 'VKN', label: 'VKN / TCKN', required: false },
     { key: 'Açıklama', label: 'Açıklama', required: false },
-    { key: 'Alacak Tutarı', label: 'Alacak Tutarı', required: true }
+    { key: 'Alacak Tutarı', label: 'KDV Tutarı (Borç/Alacak)', required: true }
+];
+
+const ACCOUNTING_MATRAH_FIELDS = [
+    { key: 'Tarih', label: 'Tarih', required: true },
+    { key: 'Ref.No', label: 'Ref.No', required: false },
+    { key: 'Fatura No', label: 'Fatura No', required: true },
+    { key: 'VKN', label: 'VKN / TCKN', required: false },
+    { key: 'Açıklama', label: 'Açıklama', required: false },
+    { key: 'Matrah', label: 'Matrah Tutarı (Borç/Alacak)', required: true }
 ];
 
 export function ReconciliationWizard({ recon }: ReconciliationWizardProps) {
     const { state, actions } = recon;
 
     // Analysis Step
-    if (state.step === 4) {
+    if (state.step === 5) {
         return (
             <div className="flex flex-col items-center justify-center min-h-[50vh] animate-fade-in">
                 <div className="relative mb-8">
@@ -48,7 +60,7 @@ export function ReconciliationWizard({ recon }: ReconciliationWizardProps) {
     }
 
     // Report Step
-    if (state.step === 5 && state.reports) {
+    if (state.step === 6 && state.reports) {
         return <ReportView reports={state.reports} onReset={actions.resetAll} />;
     }
 
@@ -86,7 +98,7 @@ export function ReconciliationWizard({ recon }: ReconciliationWizardProps) {
                     />
                 )}
 
-                {/* Step 3: Accounting Upload & Mapping */}
+                {/* Step 3: Accounting VAT Upload & Mapping */}
                 {state.step === 3 && (
                     state.accFiles.length === 0 ? (
                         <UploadStep
@@ -99,9 +111,29 @@ export function ReconciliationWizard({ recon }: ReconciliationWizardProps) {
                     ) : (
                         <MappingStep
                             file={state.accFiles[state.currentFileIndex]}
-                            canonicalFields={ACCOUNTING_FIELDS}
+                            canonicalFields={ACCOUNTING_VAT_FIELDS}
                             onComplete={actions.processAccFile}
                             onCancel={() => { actions.setAccFiles([]); actions.setStep(3); }}
+                        />
+                    )
+                )}
+
+                {/* Step 4: Accounting Matrah Upload & Mapping */}
+                {state.step === 4 && (
+                    state.accMatrahFiles.length === 0 ? (
+                        <UploadStep
+                            type="ACCOUNTING"
+                            files={state.accMatrahFiles}
+                            onFilesChange={actions.setAccMatrahFiles}
+                            onNext={() => { }}
+                            onDemo={() => actions.handleDemoData('ACCOUNTING_MATRAH')}
+                        />
+                    ) : (
+                        <MappingStep
+                            file={state.accMatrahFiles[state.currentFileIndex]}
+                            canonicalFields={ACCOUNTING_MATRAH_FIELDS}
+                            onComplete={actions.processAccMatrahFile}
+                            onCancel={() => { actions.setAccMatrahFiles([]); actions.setStep(4); }}
                         />
                     )
                 )}
