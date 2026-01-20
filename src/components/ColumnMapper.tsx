@@ -5,13 +5,13 @@ import { AlertCircle, Link2, ArrowRight, Layers, Save, Trash2, RotateCcw } from 
 interface Props {
     file: File;
     canonicalFields: { key: string; label: string; required: boolean }[];
-    onComplete: (mapping: Record<string, string>, headerRowIndex: number) => void;
+    onComplete: (mapping: Record<string, string | string[]>, headerRowIndex: number) => void;
     onCancel: () => void;
 }
 
 export default function ColumnMapper({ file, canonicalFields, onComplete, onCancel }: Props) {
     const [headers, setHeaders] = useState<string[]>([]);
-    const [mapping, setMapping] = useState<Record<string, string>>({});
+    const [mapping, setMapping] = useState<Record<string, string | string[]>>({});
     const [preview, setPreview] = useState<any[]>([]);
     const [detectedHeaderRow, setDetectedHeaderRow] = useState<number>(0);
     const [saveStatus, setSaveStatus] = useState<'idle' | 'saved' | 'cleared'>('idle');
@@ -131,7 +131,11 @@ export default function ColumnMapper({ file, canonicalFields, onComplete, onCanc
                 {/* Mapping Grid */}
                 <div className="grid gap-3 mb-8">
                     {canonicalFields.map(field => {
-                        const isMapped = !!mapping[field.key];
+                        const isKDV = field.key === 'KDV Tutarı';
+                        // Check if current mapping for this field is an array (multi-column mode)
+                        const isMultiMode = Array.isArray(mapping[field.key]);
+                        const isMapped = !!mapping[field.key] && (Array.isArray(mapping[field.key]) ? (mapping[field.key] as string[]).length > 0 : true);
+
                         return (
                             <div
                                 key={field.key}
@@ -154,7 +158,32 @@ export default function ColumnMapper({ file, canonicalFields, onComplete, onCanc
                                     </div>
                                     {!isMapped && (
                                         <div className="mt-1 v-flex-row gap-2 v-bg-error text-white text-[10px] font-black px-2 py-0.5 rounded-full v-animate-pulse uppercase">
-                                            <AlertCircle size={10} strokeWidth={4} /> Sütun Seçilmeli
+                                            <AlertCircle size={10} strokeWidth={4} /> {isMultiMode ? 'En Az Bir Sütun Seçilmeli' : 'Sütun Seçilmeli'}
+                                        </div>
+                                    )}
+
+                                    {/* Multi-Column Toggle for KDV */}
+                                    {isKDV && (
+                                        <div className="mt-3">
+                                            <label className="flex items-center gap-2 cursor-pointer group">
+                                                <input
+                                                    type="checkbox"
+                                                    className="sr-only peer"
+                                                    checked={isMultiMode}
+                                                    onChange={(e) => {
+                                                        if (e.target.checked) {
+                                                            setMapping({ ...mapping, [field.key]: [] });
+                                                        } else {
+                                                            setMapping({ ...mapping, [field.key]: '' });
+                                                        }
+                                                        setSaveStatus('idle');
+                                                    }}
+                                                />
+                                                <div className="w-9 h-5 bg-slate-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600 relative"></div>
+                                                <span className="text-xs font-bold text-slate-400 group-hover:text-white transition-colors">
+                                                    Çoklu KDV Sütunu (%1, %10, %20...)
+                                                </span>
+                                            </label>
                                         </div>
                                     )}
                                 </div>
@@ -164,31 +193,72 @@ export default function ColumnMapper({ file, canonicalFields, onComplete, onCanc
                                     <ArrowRight size={24} className={`shrink-0 transition-all ${isMapped ? 'text-success/50' : 'v-text-error scale-110'}`} />
                                 </div>
 
-                                {/* Select Input */}
+                                {/* Input Area */}
                                 <div className="relative group">
-                                    <select
-                                        className={`w-full bg-bg-main text-text-main border-2 p-4 pr-12 rounded-2xl outline-none transition-all appearance-none cursor-pointer font-bold text-sm shadow-2xl ${isMapped
-                                            ? 'border-success/40 focus:border-success hover:border-success/60'
-                                            : 'border-error focus:border-error v-text-error bg-error/5 hover:bg-error/10 shadow-error/20'
-                                            }`}
-                                        value={mapping[field.key] || ''}
-                                        onChange={(e) => {
-                                            setMapping({ ...mapping, [field.key]: e.target.value });
-                                            setSaveStatus('idle');
-                                        }}
-                                    >
-                                        <option value="" className="v-text-error font-bold">— LÜTFEN SÜTUN SEÇİN —</option>
-                                        {!field.required && (
-                                            <option value="— YOKTUR —" className="bg-bg-card text-accent font-bold">— YOKTUR —</option>
-                                        )}
-                                        {headers.map(h => <option key={h} value={h} className="bg-bg-card text-text-main">{h}</option>)}
-                                    </select>
-                                    <div className={`absolute right-5 top-1/2 -translate-y-1/2 pointer-events-none transition-all group-hover:scale-125 ${isMapped ? 'text-success' : 'v-text-error v-animate-bounce'}`}>
-                                        <Layers size={20} />
-                                    </div>
+                                    {isMultiMode ? (
+                                        // Multi-Select UI
+                                        <div className={`w-full bg-bg-main text-text-main border-2 p-3 rounded-2xl outline-none transition-all max-h-48 overflow-y-auto ${isMapped
+                                            ? 'border-success/40'
+                                            : 'border-error bg-error/5 shadow-error/20'
+                                            }`}>
+                                            <p className="text-xs font-bold text-slate-400 mb-2 sticky top-0 bg-bg-main pb-2 border-b border-white/10 z-10">
+                                                Toplam KDV'yi oluşturacak sütunları seçin:
+                                            </p>
+                                            <div className="grid grid-cols-2 gap-2">
+                                                {headers.map(h => {
+                                                    const selected = (mapping[field.key] as string[]).includes(h);
+                                                    return (
+                                                        <label key={h} className={`flex items-center gap-2 p-2 rounded-lg cursor-pointer border transition-all ${selected ? 'bg-blue-500/20 border-blue-500/50' : 'hover:bg-white/5 border-transparent'}`}>
+                                                            <input
+                                                                type="checkbox"
+                                                                className="w-4 h-4 rounded border-slate-600 text-blue-500 focus:ring-blue-500 bg-slate-700"
+                                                                checked={selected}
+                                                                onChange={(e) => {
+                                                                    const current = (mapping[field.key] as string[]) || [];
+                                                                    let updated;
+                                                                    if (e.target.checked) {
+                                                                        updated = [...current, h];
+                                                                    } else {
+                                                                        updated = current.filter(x => x !== h);
+                                                                    }
+                                                                    setMapping({ ...mapping, [field.key]: updated });
+                                                                    setSaveStatus('idle');
+                                                                }}
+                                                            />
+                                                            <span className={`text-xs font-bold truncate ${selected ? 'text-blue-400' : 'text-slate-400'}`}>{h}</span>
+                                                        </label>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        // Standard Single Select UI
+                                        <>
+                                            <select
+                                                className={`w-full bg-bg-main text-text-main border-2 p-4 pr-12 rounded-2xl outline-none transition-all appearance-none cursor-pointer font-bold text-sm shadow-2xl ${isMapped
+                                                    ? 'border-success/40 focus:border-success hover:border-success/60'
+                                                    : 'border-error focus:border-error v-text-error bg-error/5 hover:bg-error/10 shadow-error/20'
+                                                    }`}
+                                                value={(mapping[field.key] as string) || ''}
+                                                onChange={(e) => {
+                                                    setMapping({ ...mapping, [field.key]: e.target.value });
+                                                    setSaveStatus('idle');
+                                                }}
+                                            >
+                                                <option value="" className="v-text-error font-bold">— LÜTFEN SÜTUN SEÇİN —</option>
+                                                {!field.required && (
+                                                    <option value="— YOKTUR —" className="bg-bg-card text-accent font-bold">— YOKTUR —</option>
+                                                )}
+                                                {headers.map(h => <option key={h} value={h} className="bg-bg-card text-text-main">{h}</option>)}
+                                            </select>
+                                            <div className={`absolute right-5 top-1/2 -translate-y-1/2 pointer-events-none transition-all group-hover:scale-125 ${isMapped ? 'text-success' : 'v-text-error v-animate-bounce'}`}>
+                                                <Layers size={20} />
+                                            </div>
 
-                                    {!isMapped && (
-                                        <div className="absolute -top-1 -right-1 w-3 h-3 v-bg-error rounded-full animate-ping pointer-events-none"></div>
+                                            {!isMapped && (
+                                                <div className="absolute -top-1 -right-1 w-3 h-3 v-bg-error rounded-full animate-ping pointer-events-none"></div>
+                                            )}
+                                        </>
                                     )}
                                 </div>
                             </div>

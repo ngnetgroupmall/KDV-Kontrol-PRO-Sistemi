@@ -66,6 +66,24 @@ self.onmessage = async (e: MessageEvent) => {
             const processedRows = dataRows.map((row: any[], index) => {
                 const getValue = (canonicalKey: string) => {
                     const mappedHeader = mapping[canonicalKey];
+
+                    // NEW: Handle Multi-Column KDV
+                    if (Array.isArray(mappedHeader)) {
+                        if (canonicalKey === 'KDV Tutarı') {
+                            let totalKDV = 0;
+                            mappedHeader.forEach(headerName => {
+                                const idx = headerMap[headerName];
+                                if (idx !== undefined && idx >= 0 && idx < row.length) {
+                                    const val = parseTurkishNumber(row[idx]);
+                                    totalKDV += val;
+                                }
+                            });
+                            return totalKDV.toString(); // Return as string so parseTurkishNumber downstream handles it (or just return number)
+                        }
+                        // Default fallback for other array fields (shouldn't happen yet)
+                        return null;
+                    }
+
                     if (!mappedHeader || mappedHeader === '— YOKTUR —') return null; // Handle "Yoktur" for optional fields
                     const idx = headerMap[mappedHeader];
                     // Safety check for index
@@ -81,12 +99,16 @@ self.onmessage = async (e: MessageEvent) => {
                     // Filter out rows without invoice number (e.g. summary rows)
                     if (!fNo) return null;
 
+                    // KDV Tutarı might come as a number from our logic above, or string from Excel
+                    // getValue returns string | number | null. parseTurkishNumber handles both.
+                    const kdvRaw = getValue('KDV Tutarı');
+
                     return {
                         id: `ei-${index}`,
                         "Kaynak Dosya": fileName,
                         "Fatura Tarihi": formatExcelDate(getValue('Fatura Tarihi')),
                         "Fatura No": fNo,
-                        "KDV Tutarı": parseTurkishNumber(getValue('KDV Tutarı')),
+                        "KDV Tutarı": typeof kdvRaw === 'number' ? kdvRaw : parseTurkishNumber(kdvRaw),
                         "GİB Fatura Türü": getValue('GİB Fatura Türü'),
                         "Ödeme Şekli": getValue('Ödeme Şekli'),
                         "Para Birimi": getValue('Para Birimi'),

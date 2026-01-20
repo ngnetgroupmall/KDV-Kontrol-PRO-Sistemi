@@ -71,7 +71,7 @@ export default function App() {
     };
   }, []);
 
-  const processEFile = (mapping: Record<string, string>, headerRowIndex: number) => {
+  const processEFile = (mapping: Record<string, string | string[]>, headerRowIndex: number) => {
     const worker = new Worker(new URL('./workers/reconciliation.worker.ts', import.meta.url), { type: 'module' });
     setLoading(true);
     worker.postMessage({
@@ -95,7 +95,7 @@ export default function App() {
     };
   };
 
-  const processAccFile = (mapping: Record<string, string>, headerRowIndex: number) => {
+  const processAccFile = (mapping: Record<string, string | string[]>, headerRowIndex: number) => {
     const worker = new Worker(new URL('./workers/reconciliation.worker.ts', import.meta.url), { type: 'module' });
     setLoading(true);
     worker.postMessage({
