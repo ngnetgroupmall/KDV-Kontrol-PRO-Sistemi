@@ -62,10 +62,27 @@ export default function ColumnMapper({ file, canonicalFields, onComplete, onCanc
                 const newMapping: any = {};
                 canonicalFields.forEach(cf => {
                     const normCF = cf.label.toLocaleLowerCase('tr-TR').replace(/\s+/g, '');
-                    const match = cleanHeaders.find(header => {
+
+                    // First try exact fuzzy match
+                    let match = cleanHeaders.find(header => {
                         const normH = header.toLocaleLowerCase('tr-TR').replace(/\s+/g, '');
                         return normH.includes(normCF) || normCF.includes(normH);
                     });
+
+                    // Special logic for KDV if no single match found
+                    if (!match && cf.key === 'KDV Tutarı') {
+                        // Find all columns starting with "KDV" (case insensitive)
+                        const kdvMatches = cleanHeaders.filter(header => {
+                            const normH = header.toLocaleLowerCase('tr-TR');
+                            return normH.includes('kdv') && (normH.includes('%') || normH.includes('oran'));
+                        });
+
+                        if (kdvMatches.length > 0) {
+                            newMapping[cf.key] = kdvMatches.join('|||');
+                            return; // Skip standard assignment
+                        }
+                    }
+
                     if (match) newMapping[cf.key] = match;
                 });
                 setMapping(newMapping);
