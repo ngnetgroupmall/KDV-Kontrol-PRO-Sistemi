@@ -1,4 +1,6 @@
 import { UploadCloud, Zap, FileBarChart, ChevronRight } from 'lucide-react';
+import { Card } from '../../components/common/Card';
+import { Button } from '../../components/common/Button';
 
 interface FeatureCardsProps {
     onAction: (action: string) => void;
@@ -11,7 +13,10 @@ export default function FeatureCards({ onAction }: FeatureCardsProps) {
             title: 'Hızlı Yükleme',
             desc: 'GİB Portal ve Muhasebe kayıtlarını saniyeler içinde sisteme aktarın.',
             icon: UploadCloud,
-            color: 'blue',
+            bgClass: 'bg-blue-500/10',
+            borderClass: 'border-blue-500/20',
+            iconClass: 'text-blue-400',
+            hoverClass: 'group-hover:text-blue-400',
             btnText: 'Yükleme Yap'
         },
         {
@@ -19,7 +24,10 @@ export default function FeatureCards({ onAction }: FeatureCardsProps) {
             title: 'Akıllı Ayrıştırma',
             desc: 'Karmaşık açıklamalardan fatura numaralarını otomatik olarak cımbızlayın.',
             icon: Zap,
-            color: 'cyan',
+            bgClass: 'bg-cyan-500/10',
+            borderClass: 'border-cyan-500/20',
+            iconClass: 'text-cyan-400',
+            hoverClass: 'group-hover:text-cyan-400',
             btnText: 'Ayrıştırmayı Başlat'
         },
         {
@@ -27,39 +35,39 @@ export default function FeatureCards({ onAction }: FeatureCardsProps) {
             title: 'Detaylı Rapor',
             desc: 'Tüm farkları ve hatalı kayıtları kategoriye edilmiş Excel dökümü olarak alın.',
             icon: FileBarChart,
-            color: 'indigo',
+            bgClass: 'bg-indigo-500/10',
+            borderClass: 'border-indigo-500/20',
+            iconClass: 'text-indigo-400',
+            hoverClass: 'group-hover:text-indigo-400',
             btnText: 'Raporu Görüntüle'
         }
     ];
 
     return (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            {cards.map((card, idx) => (
-                <div
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 animate-fade-in">
+            {cards.map((card) => (
+                <Card
                     key={card.id}
-                    className="glass-card p-8 flex flex-col items-start h-full group relative overflow-hidden"
-                    style={{ animationDelay: `${idx * 150}ms` }}
+                    className="flex flex-col items-start h-full group relative overflow-hidden transition-all duration-300 hover:shadow-2xl hover:border-blue-500/30"
                 >
-                    {/* Ambient Light */}
-                    <div className={`absolute -right-20 -top-20 w-40 h-40 bg-${card.color}-500/10 rounded-full blur-3xl group-hover:bg-${card.color}-500/20 transition-all duration-500`}></div>
-
-                    <div className={`w-14 h-14 mb-6 rounded-2xl bg-${card.color}-500/10 border border-${card.color}-500/20 flex items-center justify-center group-hover:scale-110 transition-transform duration-300`}>
-                        <card.icon className={`w-7 h-7 text-${card.color}-400 group-hover:text-${card.color}-300 transition-colors`} />
+                    <div className={`w-14 h-14 mb-6 rounded-2xl ${card.bgClass} ${card.borderClass} flex items-center justify-center group-hover:scale-110 transition-transform duration-300 border`}>
+                        <card.icon className={`w-7 h-7 ${card.iconClass} transition-colors`} />
                     </div>
 
-                    <h3 className="text-xl font-bold text-white mb-3 group-hover:text-blue-400 transition-colors">{card.title}</h3>
+                    <h3 className={`text-xl font-bold text-white mb-3 ${card.hoverClass} transition-colors`}>{card.title}</h3>
                     <p className="text-slate-400 text-sm leading-relaxed mb-8 flex-1">
                         {card.desc}
                     </p>
 
-                    <button
+                    <Button
+                        variant="secondary"
                         onClick={() => onAction(card.id)}
-                        className="w-full py-4 px-6 rounded-xl bg-slate-800 border border-white/5 hover:bg-slate-700/80 hover:border-white/10 transition-all flex items-center justify-between group/btn"
+                        rightIcon={<ChevronRight size={18} />}
+                        className="justify-between group/btn w-full"
                     >
-                        <span className="font-bold text-sm text-slate-300 group-hover/btn:text-white transition-colors">{card.btnText}</span>
-                        <ChevronRight size={18} className="text-slate-500 group-hover/btn:text-blue-400 group-hover/btn:translate-x-1 transition-all" />
-                    </button>
-                </div>
+                        {card.btnText}
+                    </Button>
+                </Card>
             ))}
         </div>
     );

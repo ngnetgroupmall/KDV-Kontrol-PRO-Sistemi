@@ -1,15 +1,18 @@
 import { useState, useEffect } from 'react';
 import * as XLSX from 'xlsx';
 import { AlertCircle, Link2, ArrowRight, Layers, Save, Trash2, RotateCcw } from 'lucide-react';
+import { Button } from '../../../components/common/Button';
+import { Card } from '../../../components/common/Card';
+import { cn } from '../../../components/common/Button';
 
-interface Props {
+interface MappingStepProps {
     file: File;
     canonicalFields: { key: string; label: string; required: boolean }[];
     onComplete: (mapping: Record<string, string>, headerRowIndex: number) => void;
     onCancel: () => void;
 }
 
-export default function ColumnMapper({ file, canonicalFields, onComplete, onCancel }: Props) {
+export function MappingStep({ file, canonicalFields, onComplete, onCancel }: MappingStepProps) {
     const [headers, setHeaders] = useState<string[]>([]);
     const [mapping, setMapping] = useState<Record<string, string>>({});
     const [preview, setPreview] = useState<any[]>([]);
@@ -32,7 +35,7 @@ export default function ColumnMapper({ file, canonicalFields, onComplete, onCanc
 
             // Intelligent Header Search
             let headerRowIndex = 0;
-            const keywords = ['TARİH', 'AÇIKLAMA', 'FATURA', 'ALACAK', 'BORÇ', 'MÜŞTERİ', 'STATÜ', 'REF.NO'];
+            const keywords = ['TARİH', 'AÇIKLAMA', 'FATURA', 'ALACAK', 'BORÇ', 'MÜŞTERİ', 'STATÜ', 'REF.NO', 'KDV'];
 
             for (let i = 0; i < Math.min(allRows.length, 20); i++) {
                 const row = (allRows[i] || []).map(v => String(v || '').toLocaleUpperCase('tr-TR'));
@@ -69,7 +72,6 @@ export default function ColumnMapper({ file, canonicalFields, onComplete, onCanc
                         return normH.includes(normCF) || normCF.includes(normH);
                     });
 
-
                     if (match) newMapping[cf.key] = match;
                 });
                 setMapping(newMapping);
@@ -102,54 +104,51 @@ export default function ColumnMapper({ file, canonicalFields, onComplete, onCanc
     const mappedCount = canonicalFields.filter(f => !!mapping[f.key] && mapping[f.key] !== '— YOKTUR —').length;
 
     return (
-        <div className="wizard-step">
-            <div className="card glass">
+        <div className="animate-fade-in space-y-6">
+            <Card className="p-8">
                 {/* Header */}
-                <div className="v-flex-between mb-8 pb-6 border-b border-white/10">
-                    <div className="v-flex-row gap-4">
-                        <div className="w-14 h-14 bg-primary/10 rounded-2xl flex items-center justify-center border border-primary/20">
-                            <Link2 className="w-7 h-7 text-primary" />
+                <div className="flex items-center justify-between mb-8 pb-6 border-b border-slate-800">
+                    <div className="flex items-center gap-4">
+                        <div className="w-14 h-14 bg-blue-500/10 rounded-2xl flex items-center justify-center border border-blue-500/20">
+                            <Link2 className="w-7 h-7 text-blue-500" />
                         </div>
                         <div>
-                            <h3 className="text-2xl font-bold">Sütun Eşleştirme</h3>
-                            <p className="text-text-muted">Dosya: <span className="text-accent font-medium">{file.name}</span></p>
+                            <h3 className="text-2xl font-bold text-white">Sütun Eşleştirme</h3>
+                            <p className="text-slate-400">Dosya: <span className="text-blue-400 font-medium">{file.name}</span></p>
                         </div>
                     </div>
                     <div className="text-right flex flex-col items-end gap-2">
                         <div className="flex items-center gap-3">
-                            <p className="text-3xl font-black text-primary leading-none">{mappedCount}/{canonicalFields.length}</p>
+                            <p className="text-3xl font-black text-blue-500 leading-none">{mappedCount}/{canonicalFields.length}</p>
                             <div className="flex flex-col items-start leading-none opacity-50">
-                                <span className="text-[10px] font-black uppercase tracking-widest text-primary">Alan</span>
-                                <span className="text-[10px] font-black uppercase tracking-widest text-primary">Eşleşti</span>
+                                <span className="text-[10px] font-black uppercase tracking-widest text-blue-500">Alan</span>
+                                <span className="text-[10px] font-black uppercase tracking-widest text-blue-500">Eşleşti</span>
                             </div>
                         </div>
                         {saveStatus === 'saved' && (
-                            <div className="flex items-center gap-2 bg-success/20 text-success px-3 py-1 rounded-full border border-success/30 animate-pulse">
-                                <div className="w-1.5 h-1.5 bg-success rounded-full animate-ping"></div>
-                                <span className="text-[10px] font-black tracking-widest uppercase italic text-nowrap">Hafızadan Yüklendi</span>
+                            <div className="flex items-center gap-2 bg-emerald-500/20 text-emerald-500 px-3 py-1 rounded-full border border-emerald-500/30 animate-pulse">
+                                <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-ping"></div>
+                                <span className="text-[10px] font-black tracking-widest uppercase italic whitespace-nowrap">Hafızadan Yüklendi</span>
                             </div>
                         )}
                     </div>
                 </div>
 
                 {/* Mapping Grid */}
-                <div className="grid gap-3 mb-8">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-4 mb-8">
                     {canonicalFields.map(field => {
-                        const isMultiColumn = field.key === 'KDV Tutarı'; // Only KDV Tutarı supports multi-column
+                        const isMultiColumn = field.key === 'KDV Tutarı';
                         const currentVal = mapping[field.key] || '';
                         const selectedCols = isMultiColumn && currentVal.includes('|||')
                             ? currentVal.split('|||')
                             : [currentVal];
 
-                        // Determine if mapped (for UI state)
+                        // Determine if mapped
                         const isMapped = selectedCols.some(c => !!c && c !== '') && selectedCols[0] !== '— YOKTUR —';
 
-                        // Handler for multi-column changes
                         const handleMultiChange = (index: number, val: string) => {
                             const newCols = [...selectedCols];
                             newCols[index] = val;
-                            // Filter out empty strings if complex, but here we just join
-                            // If index is 0 and value is empty, it might be unmapped.
                             const newVal = newCols.join('|||');
                             setMapping({ ...mapping, [field.key]: newVal });
                             setSaveStatus('idle');
@@ -168,53 +167,57 @@ export default function ColumnMapper({ file, canonicalFields, onComplete, onCanc
                         return (
                             <div
                                 key={field.key}
-                                className={`v-grid-mapper p-5 rounded-2xl border-2 transition-all duration-300 ${isMapped
-                                    ? (mapping[field.key] === '— YOKTUR —' ? 'bg-white/5 border-white/10' : 'bg-success/5 border-success/20 shadow-lg shadow-success/5')
-                                    : 'bg-error/5 border-error/30 shadow-xl shadow-error/5 pulse-error'
-                                    }`}
+                                className={cn(
+                                    "p-5 rounded-xl border-2 transition-all duration-300",
+                                    isMapped
+                                        ? (mapping[field.key] === '— YOKTUR —' ? 'bg-slate-800/30 border-slate-700' : 'bg-blue-500/5 border-blue-500/30 shadow-lg shadow-blue-500/5')
+                                        : 'bg-red-500/5 border-red-500/20 shadow-xl shadow-red-500/5'
+                                )}
                             >
                                 {/* Field Name */}
-                                <div className="min-w-0">
+                                <div className="min-w-0 mb-4">
                                     <div className="flex items-center gap-2 mb-1">
-                                        <span className={`font-black text-base uppercase tracking-tight block truncate ${isMapped ? 'text-white/90' : 'v-text-error'}`}>
+                                        <span className={cn(
+                                            "font-bold text-base uppercase tracking-tight block truncate",
+                                            isMapped ? 'text-slate-200' : 'text-red-400'
+                                        )}>
                                             {field.label}
                                         </span>
                                         {field.required ? (
-                                            <span className="text-[10px] bg-error/20 text-error px-2 py-0.5 rounded-md font-bold uppercase tracking-wider">Zorunlu</span>
+                                            <span className="text-[10px] bg-red-500/20 text-red-400 px-2 py-0.5 rounded-md font-bold uppercase tracking-wider">Zorunlu</span>
                                         ) : (
-                                            <span className="text-[10px] bg-white/10 text-text-muted px-2 py-0.5 rounded-md font-bold uppercase tracking-wider">İsteğe Bağlı</span>
+                                            <span className="text-[10px] bg-slate-700 text-slate-400 px-2 py-0.5 rounded-md font-bold uppercase tracking-wider">İsteğe Bağlı</span>
                                         )}
                                     </div>
                                     {!isMapped && (
-                                        <div className="mt-1 v-flex-row gap-2 v-bg-error text-white text-[10px] font-black px-2 py-0.5 rounded-full v-animate-pulse uppercase">
-                                            <AlertCircle size={10} strokeWidth={4} /> Sütun Seçilmeli
+                                        <div className="mt-2 flex items-center gap-2 text-red-400 text-xs font-bold animate-pulse">
+                                            <AlertCircle size={12} strokeWidth={3} /> Lütfen bir sütun seçin
                                         </div>
                                     )}
                                     {isMultiColumn && (
-                                        <div className="mt-2">
-                                            <button onClick={addColumn} className="text-[10px] bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 px-2 py-1 rounded border border-blue-500/30 flex items-center gap-1 transition-colors">
-                                                <Layers size={10} /> + Sütun Ekle (Topla)
+                                        <div className="mt-2 text-right">
+                                            <button
+                                                onClick={addColumn}
+                                                className="text-[10px] bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 px-2 py-1 rounded border border-blue-500/20 flex items-center gap-1 transition-colors ml-auto"
+                                            >
+                                                <Layers size={10} /> + Çoklu KDV Sütunu Ekle
                                             </button>
                                         </div>
                                     )}
-                                </div>
-
-                                {/* Divider */}
-                                <div className="flex justify-center">
-                                    <ArrowRight size={24} className={`shrink-0 transition-all ${isMapped ? 'text-success/50' : 'v-text-error scale-110'}`} />
                                 </div>
 
                                 {/* Input Area */}
                                 <div className="space-y-2">
                                     {selectedCols.map((colVal, colIndex) => (
                                         <div key={colIndex} className="relative group flex items-center gap-2">
-                                            {/* Select Input */}
                                             <div className="relative w-full">
                                                 <select
-                                                    className={`w-full bg-bg-main text-text-main border-2 p-4 pr-12 rounded-2xl outline-none transition-all appearance-none cursor-pointer font-bold text-sm shadow-2xl ${!!colVal && colVal !== ''
-                                                        ? 'border-success/40 focus:border-success hover:border-success/60'
-                                                        : 'border-error focus:border-error v-text-error bg-error/5 hover:bg-error/10 shadow-error/20'
-                                                        }`}
+                                                    className={cn(
+                                                        "w-full bg-slate-900 text-white border-2 p-3 pr-10 rounded-xl outline-none transition-all appearance-none cursor-pointer font-medium text-sm shadow-sm",
+                                                        !!colVal && colVal !== ''
+                                                            ? 'border-blue-500/40 focus:border-blue-500 hover:border-blue-500/60'
+                                                            : 'border-red-500/40 focus:border-red-500 hover:border-red-500/60'
+                                                    )}
                                                     value={colVal || ''}
                                                     onChange={(e) => {
                                                         if (isMultiColumn) {
@@ -225,14 +228,14 @@ export default function ColumnMapper({ file, canonicalFields, onComplete, onCanc
                                                         }
                                                     }}
                                                 >
-                                                    <option value="" className="v-text-error font-bold">— LÜTFEN SÜTUN SEÇİN —</option>
+                                                    <option value="" className="text-slate-500">— LÜTFEN SÜTUN SEÇİN —</option>
                                                     {!field.required && colIndex === 0 && (
-                                                        <option value="— YOKTUR —" className="bg-bg-card text-accent font-bold">— YOKTUR —</option>
+                                                        <option value="— YOKTUR —" className="text-slate-400 font-bold">— YOKTUR —</option>
                                                     )}
-                                                    {headers.map(h => <option key={h} value={h} className="bg-bg-card text-text-main">{h}</option>)}
+                                                    {headers.map(h => <option key={h} value={h} className="text-slate-200">{h}</option>)}
                                                 </select>
-                                                <div className={`absolute right-5 top-1/2 -translate-y-1/2 pointer-events-none transition-all group-hover:scale-125 ${!!colVal && colVal !== '' ? 'text-success' : 'v-text-error v-animate-bounce'}`}>
-                                                    <Layers size={20} />
+                                                <div className={`absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none transition-all ${!!colVal && colVal !== '' ? 'text-blue-500' : 'text-slate-600'}`}>
+                                                    <Layers size={16} />
                                                 </div>
                                             </div>
 
@@ -245,10 +248,6 @@ export default function ColumnMapper({ file, canonicalFields, onComplete, onCanc
                                                     <Trash2 size={18} />
                                                 </button>
                                             )}
-
-                                            {(!colVal || colVal === '') && (
-                                                <div className="absolute -top-1 -right-1 w-3 h-3 v-bg-error rounded-full animate-ping pointer-events-none"></div>
-                                            )}
                                         </div>
                                     ))}
                                 </div>
@@ -259,15 +258,15 @@ export default function ColumnMapper({ file, canonicalFields, onComplete, onCanc
 
                 {/* Preview */}
                 <div className="mb-8">
-                    <h4 className="font-bold text-lg mb-4 flex items-center gap-2 text-white/50">
-                        📋 Veri Önizleme <span className="text-text-muted font-normal text-sm">(İlk 5 satır)</span>
+                    <h4 className="font-bold text-lg mb-4 flex items-center gap-2 text-slate-400">
+                        📋 Veri Önizleme <span className="text-slate-500 font-normal text-sm">(İlk 5 satır)</span>
                     </h4>
-                    <div className="overflow-x-auto rounded-xl border border-white/5 bg-black/20">
+                    <div className="overflow-x-auto rounded-xl border border-slate-700 bg-slate-900/50">
                         <table className="w-full text-xs">
                             <thead>
-                                <tr className="bg-bg-main">
+                                <tr className="bg-slate-800">
                                     {headers.slice(0, 8).map(h => (
-                                        <th key={h} className="p-3 text-left font-bold text-text-muted uppercase tracking-wide border-b border-white/5">{h}</th>
+                                        <th key={h} className="p-3 text-left font-bold text-slate-400 uppercase tracking-wide border-b border-slate-700">{h}</th>
                                     ))}
                                 </tr>
                             </thead>
@@ -275,7 +274,7 @@ export default function ColumnMapper({ file, canonicalFields, onComplete, onCanc
                                 {preview.map((row, i) => (
                                     <tr key={i} className="hover:bg-white/[0.02] transition-colors">
                                         {headers.slice(0, 8).map((_, j) => (
-                                            <td key={j} className="p-3 border-b border-white/5 font-medium opacity-80">{row[j] || '-'}</td>
+                                            <td key={j} className="p-3 border-b border-slate-800 font-medium text-slate-300">{row[j] || '-'}</td>
                                         ))}
                                     </tr>
                                 ))}
@@ -285,49 +284,50 @@ export default function ColumnMapper({ file, canonicalFields, onComplete, onCanc
                 </div>
 
                 {/* Actions */}
-                <div className="v-flex-between pt-12 border-t border-white/10 mt-8">
+                <div className="flex items-center justify-between pt-8 border-t border-slate-800 mt-8">
                     {/* Left side: Persistence Tools */}
-                    <div className="v-flex-gap-4">
-                        <button
+                    <div className="flex gap-3">
+                        <Button
+                            variant="secondary"
                             onClick={saveMapping}
                             disabled={!allRequiredMapped}
-                            className="v-btn-save group"
+                            leftIcon={<Save size={18} />}
                             title="Bu dosya formatı için eşleştirmeleri hafızaya kaydet"
+                            size="sm"
                         >
-                            <Save size={18} className="transition-transform group-hover:scale-110" />
-                            <span>{saveStatus === 'saved' ? 'KAYDEDİLDİ' : 'Hafızaya Kaydet'}</span>
-                        </button>
+                            {saveStatus === 'saved' ? 'KAYDEDİLDİ' : 'Hafızaya Kaydet'}
+                        </Button>
 
                         <button
                             onClick={clearMemory}
-                            className="v-btn-delete group"
+                            className="text-xs font-bold text-slate-600 hover:text-red-400 transition-colors flex items-center gap-1 px-3"
                             title="Tüm kayıtlı eşleştirme hafızasını temizle"
                         >
-                            <Trash2 size={16} className="opacity-50 transition-all group-hover:opacity-100 group-hover:rotate-12" />
-                            <span>{saveStatus === 'cleared' ? 'TEMİZLENDİ' : 'Hafızayı Sil'}</span>
+                            <Trash2 size={14} /> Hafızayı Sil
                         </button>
                     </div>
 
                     {/* Right side: Navigation */}
-                    <div className="v-flex-end">
-                        <button
+                    <div className="flex gap-3">
+                        <Button
+                            variant="ghost"
                             onClick={onCancel}
-                            className="v-btn-back"
+                            leftIcon={<RotateCcw size={18} />}
                         >
-                            <RotateCcw size={18} /> Geri Dön
-                        </button>
+                            Geri Dön
+                        </Button>
 
-                        <button
+                        <Button
+                            variant="primary"
                             disabled={!allRequiredMapped}
                             onClick={() => onComplete(mapping, detectedHeaderRow)}
-                            className="v-btn-next group"
+                            rightIcon={<ArrowRight size={20} />}
                         >
-                            <span>Tamamla ve Devam Et</span>
-                            <ArrowRight size={26} strokeWidth={4} className="transition-transform group-hover:translate-x-2" />
-                        </button>
+                            Tamamla ve Devam Et
+                        </Button>
                     </div>
                 </div>
-            </div>
+            </Card>
         </div>
     );
 }

@@ -58,7 +58,7 @@ self.onmessage = async (e: MessageEvent) => {
 
             // Skip header rows and summary rows
             const summaryKeywords = ['NAKLİ YEKÜN', 'TOPLAM', 'YEKÜN', 'TOPLAMI', 'NAKLI'];
-            const dataRows = allRows.slice(headerRowIndex + 1).filter(row => {
+            const dataRows = allRows.slice(headerRowIndex + 1).filter((row: any[]) => {
                 const rowText = row.map((c: any) => String(c || '').toLocaleUpperCase('tr-TR')).join(' ');
                 return !summaryKeywords.some(k => rowText.includes(k));
             });
@@ -66,27 +66,32 @@ self.onmessage = async (e: MessageEvent) => {
             const processedRows = dataRows.map((row: any[], index) => {
                 const getValue = (canonicalKey: string) => {
                     const mappedHeader = mapping[canonicalKey];
+                    if (!mappedHeader || mappedHeader === '— YOKTUR —') return null;
 
-                    // NEW: Handle Multi-Column KDV
-                    if (Array.isArray(mappedHeader)) {
-                        if (canonicalKey === 'KDV Tutarı') {
-                            let totalKDV = 0;
-                            mappedHeader.forEach(headerName => {
-                                const idx = headerMap[headerName];
-                                if (idx !== undefined && idx >= 0 && idx < row.length) {
-                                    const val = parseTurkishNumber(row[idx]);
-                                    totalKDV += val;
+                    // Support multi-column summing for values separated by |||
+                    if (mappedHeader.includes('|||')) {
+                        const columns = mappedHeader.split('|||').filter((c: string) => c && c !== '');
+                        let totalSum = 0;
+                        let hasValue = false;
+
+                        columns.forEach((colName: string) => {
+                            const idx = headerMap[colName.trim()];
+                            if (idx !== undefined && idx >= 0 && idx < row.length) {
+                                const rawVal = row[idx];
+                                const parsed = parseTurkishNumber(rawVal);
+                                if (!isNaN(parsed)) {
+                                    totalSum += parsed;
+                                    hasValue = true;
                                 }
-                            });
-                            return totalKDV.toString(); // Return as string so parseTurkishNumber downstream handles it (or just return number)
-                        }
-                        // Default fallback for other array fields (shouldn't happen yet)
-                        return null;
+                            }
+                        });
+
+                        // Only return sum if at least one column had a valid numeric value, otherwise return null (or 0 if preferred, but null keeps consistency)
+                        // Actually for KDV, 0 is a valid number.
+                        return hasValue ? totalSum : 0;
                     }
 
-                    if (!mappedHeader || mappedHeader === '— YOKTUR —') return null; // Handle "Yoktur" for optional fields
                     const idx = headerMap[mappedHeader];
-                    // Safety check for index
                     if (idx === undefined || idx < 0 || idx >= row.length) {
                         return null;
                     }
@@ -99,16 +104,18 @@ self.onmessage = async (e: MessageEvent) => {
                     // Filter out rows without invoice number (e.g. summary rows)
                     if (!fNo) return null;
 
-                    // KDV Tutarı might come as a number from our logic above, or string from Excel
-                    // getValue returns string | number | null. parseTurkishNumber handles both.
-                    const kdvRaw = getValue('KDV Tutarı');
+                    // Specific handling for KDV Tutarı which might have come from a multi-sum
+                    // getValue now returns a number directly if it was a multi-column sum, or raw value if single.
+                    // We need to be careful: parseTurkishNumber expects string or number.
+                    const rawKdv = getValue('KDV Tutarı');
+                    const kdvVal = typeof rawKdv === 'number' ? rawKdv : parseTurkishNumber(rawKdv);
 
                     return {
                         id: `ei-${index}`,
                         "Kaynak Dosya": fileName,
                         "Fatura Tarihi": formatExcelDate(getValue('Fatura Tarihi')),
                         "Fatura No": fNo,
-                        "KDV Tutarı": typeof kdvRaw === 'number' ? kdvRaw : parseTurkishNumber(kdvRaw),
+                        "KDV Tutarı": kdvVal,
                         "GİB Fatura Türü": getValue('GİB Fatura Türü'),
                         "Ödeme Şekli": getValue('Ödeme Şekli'),
                         "Para Birimi": getValue('Para Birimi'),

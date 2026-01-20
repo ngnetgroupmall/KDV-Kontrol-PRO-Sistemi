@@ -1,4 +1,5 @@
 import { ArrowRight, PlayCircle } from 'lucide-react';
+import { Button } from '../../components/common/Button';
 
 interface HeroSectionProps {
     onStart: () => void;
@@ -6,14 +7,15 @@ interface HeroSectionProps {
 
 export default function HeroSection({ onStart }: HeroSectionProps) {
     return (
-        <section className="relative w-full rounded-3xl overflow-hidden bg-gradient-to-br from-slate-800/50 to-slate-900/50 border border-white/5 p-12 mb-8">
+        <section className="relative w-full rounded-3xl overflow-hidden bg-gradient-to-br from-slate-800/50 to-slate-900/50 border border-slate-800 p-12 mb-8 shadow-2xl animate-fade-in">
             {/* Glow Effect */}
             <div className="absolute top-0 right-0 w-full h-full bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 pointer-events-none mix-blend-overlay"></div>
+            <div className="absolute -top-40 -right-40 w-96 h-96 bg-blue-500/20 rounded-full blur-[100px] pointer-events-none"></div>
 
             <div className="relative z-10 flex flex-col lg:flex-row items-center justify-between gap-12">
                 {/* Text Content */}
                 <div className="flex-1 space-y-8">
-                    <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/5 border border-white/10 text-xs font-bold text-slate-400 tracking-wider uppercase">
+                    <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/10 border border-blue-500/20 text-xs font-bold text-blue-400 tracking-wider uppercase">
                         <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></span>
                         NG NET GROUP SOLUTIONS
                     </div>
@@ -32,14 +34,21 @@ export default function HeroSection({ onStart }: HeroSectionProps) {
                     </div>
 
                     <div className="flex items-center gap-4">
-                        <button onClick={onStart} className="btn-primary group">
+                        <Button
+                            variant="primary"
+                            size="lg"
+                            onClick={onStart}
+                            rightIcon={<ArrowRight className="group-hover:translate-x-1 transition-transform" />}
+                        >
                             Hemen Başla
-                            <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
-                        </button>
-                        <button className="btn-secondary group">
+                        </Button>
+                        <Button
+                            variant="secondary"
+                            size="lg"
+                            leftIcon={<PlayCircle className="w-5 h-5 text-slate-400 group-hover:text-white transition-colors" />}
+                        >
                             Nasıl Çalışır?
-                            <PlayCircle className="w-5 h-5 text-slate-400 group-hover:text-white transition-colors" />
-                        </button>
+                        </Button>
                     </div>
                 </div>
 
@@ -57,8 +66,8 @@ export default function HeroSection({ onStart }: HeroSectionProps) {
                             <div className="w-full h-full bg-gradient-to-tr from-slate-600 to-slate-500 rounded-3xl border border-white/10 shadow-2xl"></div>
                         </div>
                         <div className="absolute top-0 left-0 w-64 h-64 z-30 transform hover:scale-105 transition-transform duration-500">
-                            <div className="w-full h-full bg-gradient-to-bl from-blue-600 to-cyan-500 rounded-3xl border border-white/20 shadow-[0_20px_50px_-12px_rgba(59,130,246,0.5)] flex items-center justify-center">
-                                <div className="text-white text-opacity-20 font-black text-9xl select-none">K</div>
+                            <div className="w-full h-full bg-gradient-to-bl from-blue-600/20 to-cyan-500/20 rounded-3xl border border-white/20 shadow-[0_20px_50px_-12px_rgba(59,130,246,0.3)] flex items-center justify-center backdrop-blur-sm overflow-hidden p-8">
+                                <img src="/logo.png" alt="NG NET GROUP" className="w-full h-full object-contain filter drop-shadow-2xl" />
                             </div>
                         </div>
 
@@ -66,7 +75,7 @@ export default function HeroSection({ onStart }: HeroSectionProps) {
                         <div className="absolute -right-12 top-10 z-40 bg-slate-800 border border-slate-700 p-3 rounded-xl shadow-xl animate-float-delayed">
                             <div className="flex items-center gap-2">
                                 <div className="w-3 h-3 bg-green-500 rounded-full"></div>
-                                <span className="font-bold text-xs">NG NET GROUP</span>
+                                <span className="font-bold text-xs text-white">NG NET GROUP</span>
                             </div>
                         </div>
                     </div>
