@@ -62,10 +62,27 @@ export default function ColumnMapper({ file, canonicalFields, onComplete, onCanc
                 const newMapping: any = {};
                 canonicalFields.forEach(cf => {
                     const normCF = cf.label.toLocaleLowerCase('tr-TR').replace(/\s+/g, '');
-                    const match = cleanHeaders.find(header => {
+
+                    // First try exact fuzzy match
+                    let match = cleanHeaders.find(header => {
                         const normH = header.toLocaleLowerCase('tr-TR').replace(/\s+/g, '');
                         return normH.includes(normCF) || normCF.includes(normH);
                     });
+
+                    // Special logic for KDV if no single match found
+                    if (!match && cf.key === 'KDV Tutarı') {
+                        // Find all columns starting with "KDV" (case insensitive)
+                        const kdvMatches = cleanHeaders.filter(header => {
+                            const normH = header.toLocaleLowerCase('tr-TR');
+                            return normH.includes('kdv') && (normH.includes('%') || normH.includes('oran'));
+                        });
+
+                        if (kdvMatches.length > 0) {
+                            newMapping[cf.key] = kdvMatches.join('|||');
+                            return; // Skip standard assignment
+                        }
+                    }
+
                     if (match) newMapping[cf.key] = match;
                 });
                 setMapping(newMapping);
@@ -165,29 +182,98 @@ export default function ColumnMapper({ file, canonicalFields, onComplete, onCanc
                                 </div>
 
                                 {/* Select Input */}
-                                <div className="relative group">
-                                    <select
-                                        className={`w-full bg-bg-main text-text-main border-2 p-4 pr-12 rounded-2xl outline-none transition-all appearance-none cursor-pointer font-bold text-sm shadow-2xl ${isMapped
-                                            ? 'border-success/40 focus:border-success hover:border-success/60'
-                                            : 'border-error focus:border-error v-text-error bg-error/5 hover:bg-error/10 shadow-error/20'
-                                            }`}
-                                        value={mapping[field.key] || ''}
-                                        onChange={(e) => {
-                                            setMapping({ ...mapping, [field.key]: e.target.value });
-                                            setSaveStatus('idle');
-                                        }}
-                                    >
-                                        <option value="" className="v-text-error font-bold">— LÜTFEN SÜTUN SEÇİN —</option>
-                                        {!field.required && (
-                                            <option value="— YOKTUR —" className="bg-bg-card text-accent font-bold">— YOKTUR —</option>
-                                        )}
-                                        {headers.map(h => <option key={h} value={h} className="bg-bg-card text-text-main">{h}</option>)}
-                                    </select>
-                                    <div className={`absolute right-5 top-1/2 -translate-y-1/2 pointer-events-none transition-all group-hover:scale-125 ${isMapped ? 'text-success' : 'v-text-error v-animate-bounce'}`}>
-                                        <Layers size={20} />
-                                    </div>
+                                <div className="flex flex-col gap-2">
+                                    {((mapping[field.key] || '').split('|||')).map((mappedCol, idx, arr) => (
+                                        <div key={idx} className="relative group flex items-center gap-1">
+                                            <div className="relative flex-1">
+                                                <select
+                                                    className={`w-full bg-bg-main text-text-main border-2 p-4 pr-12 rounded-2xl outline-none transition-all appearance-none cursor-pointer font-bold text-sm shadow-2xl ${mappedCol && mappedCol !== '— YOKTUR —'
+                                                            ? 'border-success/40 focus:border-success hover:border-success/60'
+                                                            : 'border-error focus:border-error v-text-error bg-error/5 hover:bg-error/10 shadow-error/20'
+                                                        }`}
+                                                    value={mappedCol || ''}
+                                                    onChange={(e) => {
+                                                        const newValue = e.target.value;
+                                                        const currentValues = (mapping[field.key] || '').split('|||').filter(Boolean);
 
-                                    {!isMapped && (
+                                                        // If selecting "— YOKTUR —", clear others and set only this
+                                                        if (newValue === '— YOKTUR —') {
+                                                            setMapping({ ...mapping, [field.key]: '— YOKTUR —' });
+                                                            return;
+                                                        }
+
+                                                        // If we were "— YOKTUR —" before, just set this new value
+                                                        if (currentValues.length === 1 && currentValues[0] === '— YOKTUR —') {
+                                                            setMapping({ ...mapping, [field.key]: newValue });
+                                                            return;
+                                                        }
+
+                                                        const newValues = [...currentValues];
+                                                        // Pad with empty strings if needed (shouldn't happen with map logic but safe)
+                                                        while (newValues.length <= idx) newValues.push('');
+
+                                                        newValues[idx] = newValue;
+                                                        // Filter out empties unless it's the only one
+                                                        const cleanValues = newValues.filter(v => v !== '');
+
+                                                        setMapping({ ...mapping, [field.key]: cleanValues.length > 0 ? cleanValues.join('|||') : '' });
+                                                        setSaveStatus('idle');
+                                                    }}
+                                                >
+                                                    <option value="" className="v-text-error font-bold">— LÜTFEN SÜTUN SEÇİN —</option>
+                                                    {!field.required && idx === 0 && (
+                                                        <option value="— YOKTUR —" className="bg-bg-card text-accent font-bold">— YOKTUR —</option>
+                                                    )}
+                                                    {headers.map(h => (
+                                                        <option
+                                                            key={h}
+                                                            value={h}
+                                                            className="bg-bg-card text-text-main"
+                                                            disabled={arr.includes(h) && h !== mappedCol} // Disable if selected in another dropdown for this field
+                                                        >
+                                                            {h}
+                                                        </option>
+                                                    ))}
+                                                </select>
+                                                <div className={`absolute right-5 top-1/2 -translate-y-1/2 pointer-events-none transition-all group-hover:scale-125 ${mappedCol && mappedCol !== '— YOKTUR —' ? 'text-success' : 'v-text-error v-animate-bounce'
+                                                    }`}>
+                                                    <Layers size={20} />
+                                                </div>
+                                            </div>
+
+                                            {/* Add/Remove Buttons */}
+                                            {(field.key === 'KDV Tutarı' || arr.length > 1) && (
+                                                <div className="flex flex-col gap-1">
+                                                    {idx === arr.length - 1 && mappedCol !== '— YOKTUR —' && mappedCol !== '' && (
+                                                        <button
+                                                            onClick={() => {
+                                                                const current = mapping[field.key] || '';
+                                                                setMapping({ ...mapping, [field.key]: current + '|||' });
+                                                            }}
+                                                            className="p-2 bg-blue-500/20 text-blue-400 rounded-lg hover:bg-blue-500 hover:text-white transition-colors"
+                                                            title="Başka bir sütun daha ekle (Toplamak için)"
+                                                        >
+                                                            +
+                                                        </button>
+                                                    )}
+                                                    {arr.length > 1 && (
+                                                        <button
+                                                            onClick={() => {
+                                                                const newValues = arr.filter((_, i) => i !== idx);
+                                                                setMapping({ ...mapping, [field.key]: newValues.join('|||') });
+                                                            }}
+                                                            className="p-2 bg-red-500/20 text-red-400 rounded-lg hover:bg-red-500 hover:text-white transition-colors"
+                                                            title="Bu sütunu kaldır"
+                                                        >
+                                                            -
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            )}
+                                        </div>
+                                    ))}
+
+                                    {(!mapping[field.key]) && (
                                         <div className="absolute -top-1 -right-1 w-3 h-3 v-bg-error rounded-full animate-ping pointer-events-none"></div>
                                     )}
                                 </div>

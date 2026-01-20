@@ -65,14 +65,33 @@ self.onmessage = async (e: MessageEvent) => {
 
             const processedRows = dataRows.map((row: any[], index) => {
                 const getValue = (canonicalKey: string) => {
-                    const mappedHeader = mapping[canonicalKey];
-                    if (!mappedHeader || mappedHeader === '— YOKTUR —') return null; // Handle "Yoktur" for optional fields
+                    const mappedHeaderRaw = mapping[canonicalKey];
+                    if (!mappedHeaderRaw || mappedHeaderRaw === '— YOKTUR —') return null;
+
+                    // Default to first column for standard fields
+                    const mappedHeader = mappedHeaderRaw.split('|||')[0];
+
                     const idx = headerMap[mappedHeader];
                     // Safety check for index
                     if (idx === undefined || idx < 0 || idx >= row.length) {
                         return null;
                     }
                     return row[idx];
+                };
+
+                const getSummedValue = (canonicalKey: string) => {
+                    const mappedHeaderRaw = mapping[canonicalKey];
+                    if (!mappedHeaderRaw || mappedHeaderRaw === '— YOKTUR —') return 0;
+
+                    const headers = mappedHeaderRaw.split('|||');
+                    let total = 0;
+                    headers.forEach((h: string) => {
+                        const idx = headerMap[h];
+                        if (idx !== undefined && idx >= 0 && idx < row.length) {
+                            total += parseTurkishNumber(row[idx]);
+                        }
+                    });
+                    return total;
                 };
 
                 const fNo = normalizeString(getValue('Fatura No'));
@@ -86,7 +105,7 @@ self.onmessage = async (e: MessageEvent) => {
                         "Kaynak Dosya": fileName,
                         "Fatura Tarihi": formatExcelDate(getValue('Fatura Tarihi')),
                         "Fatura No": fNo,
-                        "KDV Tutarı": parseTurkishNumber(getValue('KDV Tutarı')),
+                        "KDV Tutarı": getSummedValue('KDV Tutarı'),
                         "GİB Fatura Türü": getValue('GİB Fatura Türü'),
                         "Ödeme Şekli": getValue('Ödeme Şekli'),
                         "Para Birimi": getValue('Para Birimi'),
