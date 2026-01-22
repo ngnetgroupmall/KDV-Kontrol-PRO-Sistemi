@@ -109,16 +109,12 @@ self.onmessage = async (e: MessageEvent) => {
                     const rawKdv = getValue('KDV Tutarı');
                     const kdvVal = typeof rawKdv === 'number' ? rawKdv : parseTurkishNumber(rawKdv);
 
-                    const rawMatrah = getValue('Matrah');
-                    const matrahVal = typeof rawMatrah === 'number' ? rawMatrah : parseTurkishNumber(rawMatrah);
-
-                    return {
+                    const rowObj: any = {
                         id: `ei-${index}`,
                         "Kaynak Dosya": fileName,
                         "Fatura Tarihi": formatExcelDate(getValue('Fatura Tarihi')),
                         "Fatura No": fNo,
                         "VKN": vkn,
-                        "Matrah": matrahVal,
                         "KDV Tutarı": kdvVal,
                         "GİB Fatura Türü": getValue('GİB Fatura Türü'),
                         "Ödeme Şekli": getValue('Ödeme Şekli'),
@@ -129,6 +125,14 @@ self.onmessage = async (e: MessageEvent) => {
                         "Geçerlilik Durumu": normalizeString(getValue('Geçerlilik Durumu')),
                         originalRow: row
                     };
+
+                    // Only include Matrah for Sales mode
+                    if (mode === 'SALES') {
+                        const rawMatrah = getValue('Matrah');
+                        rowObj["Matrah"] = typeof rawMatrah === 'number' ? rawMatrah : parseTurkishNumber(rawMatrah);
+                    }
+
+                    return rowObj;
                 } else {
                     const directNo = String(getValue('Fatura No') || '');
                     const aciklama = String(getValue('Açıklama') || '');
@@ -139,9 +143,6 @@ self.onmessage = async (e: MessageEvent) => {
                     const vatAmountKey = mode === 'PURCHASE' ? 'Borç Tutarı' : 'Alacak Tutarı';
                     const alacakTutari = parseTurkishNumber(getValue(vatAmountKey));
 
-                    const rawMatrah = getValue('Matrah');
-                    const matrahVal = typeof rawMatrah === 'number' ? rawMatrah : parseTurkishNumber(rawMatrah);
-
                     // Validation: (Alacak > 0) AND (No valid 16-char invoice) AND (Not a summary/transfer row)
                     const normalizedAciklama = aciklama.toLocaleUpperCase('tr-TR');
                     const isSummaryRow = normalizedAciklama.includes('NAKLİ YEKÜN') ||
@@ -151,7 +152,7 @@ self.onmessage = async (e: MessageEvent) => {
 
                     const validationError = alacakTutari > 0 && !first && !isSummaryRow;
 
-                    return {
+                    const rowObj: any = {
                         id: `acc-${index}`,
                         "Kaynak Dosya": fileName,
                         "Tarih": formatExcelDate(getValue('Tarih')),
@@ -160,11 +161,18 @@ self.onmessage = async (e: MessageEvent) => {
                         "VKN": vkn,
                         "Açıklama": aciklama,
                         "Alacak Tutarı": alacakTutari,
-                        "Matrah": matrahVal,
                         originalRow: row,
                         multipleInvoicesFound: matches.length > 1,
                         validationError
                     };
+
+                    // Only include Matrah for Sales mode
+                    if (mode === 'SALES') {
+                        const rawMatrah = getValue('Matrah');
+                        rowObj["Matrah"] = typeof rawMatrah === 'number' ? rawMatrah : parseTurkishNumber(rawMatrah);
+                    }
+
+                    return rowObj;
                 }
             }).filter(Boolean);
 
@@ -264,22 +272,38 @@ self.onmessage = async (e: MessageEvent) => {
                 const diffKdv = Math.abs(eiKdvConverted - accData.total);
                 const diffMatrah = mode === 'PURCHASE' ? 0 : Math.abs(eiMatrahConverted - accData.totalMatrah);
 
-                // Report if either KDV or Matrah has diff (Matrah diff is forced 0 for PURCHASE)
+                // Report if KDV has diff (for PURCHASE, we only check KDV; for SALES we check both KDV and Matrah)
                 if (diffKdv > tolerance || (mode !== 'PURCHASE' && diffMatrah > tolerance)) {
-                    report3.push({
-                        "Kaynak Dosya": ei["Kaynak Dosya"],
-                        "Fatura Tarihi": ei["Fatura Tarihi"],
-                        "Fatura No": fNo,
-                        "VKN": vkn, // Add VKN to report
-                        "Para Birimi": ei["Para Birimi"] || 'TL',
-                        "Kur": kur,
-                        "E-Fat Matrah": mode === 'PURCHASE' ? 0 : ei["Matrah"], // Hide or zero out Matrah for Purchase
-                        "E-Fat KDV": ei["KDV Tutarı"], // Display original
-                        "Muh. Matrah": mode === 'PURCHASE' ? 0 : accData.totalMatrah,
-                        "Muh. KDV": accData.total,
-                        "Matrah Farkı": mode === 'PURCHASE' ? 0 : (eiMatrahConverted - accData.totalMatrah),
-                        "KDV Farkı": eiKdvConverted - accData.total
-                    });
+                    // For PURCHASE mode, exclude matrah-related fields entirely
+                    if (mode === 'PURCHASE') {
+                        report3.push({
+                            "Kaynak Dosya": ei["Kaynak Dosya"],
+                            "Fatura Tarihi": ei["Fatura Tarihi"],
+                            "Fatura No": fNo,
+                            "VKN": vkn,
+                            "Para Birimi": ei["Para Birimi"] || 'TL',
+                            "Kur": kur,
+                            "E-Fat KDV": ei["KDV Tutarı"],
+                            "Muh. KDV": accData.total,
+                            "KDV Farkı": eiKdvConverted - accData.total
+                        });
+                    } else {
+                        // SALES mode: include all fields including matrah
+                        report3.push({
+                            "Kaynak Dosya": ei["Kaynak Dosya"],
+                            "Fatura Tarihi": ei["Fatura Tarihi"],
+                            "Fatura No": fNo,
+                            "VKN": vkn,
+                            "Para Birimi": ei["Para Birimi"] || 'TL',
+                            "Kur": kur,
+                            "E-Fat Matrah": ei["Matrah"],
+                            "E-Fat KDV": ei["KDV Tutarı"],
+                            "Muh. Matrah": accData.totalMatrah,
+                            "Muh. KDV": accData.total,
+                            "Matrah Farkı": eiMatrahConverted - accData.totalMatrah,
+                            "KDV Farkı": eiKdvConverted - accData.total
+                        });
+                    }
                 }
             }
         });
