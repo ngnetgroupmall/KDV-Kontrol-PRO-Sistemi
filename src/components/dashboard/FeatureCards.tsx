@@ -57,12 +57,33 @@ export default function FeatureCards({ onAction }: FeatureCardsProps) {
                     </p>
 
                     <Button
-                        variant="primary" // Or variant="secondary" if available, or just override via className if needed but Button component might handle colors. 
-                        // Assuming Button takes className or variant. Let's stick to primary but maybe style changes if needed. 
-                        // Actually 'variant="primary"' is usually blue. Let's see if we can override color. 
-                        // If not, primary is fine, or we can add a 'purple' variant later. 
-                        // For now, I'll use standard Button but maybe add className to tint it if possible, or just accept Blue button on Purple card.
+                        variant="primary"
                         onClick={() => onAction('purchase')}
+                        rightIcon={<ChevronRight size={18} />}
+                        className="w-full justify-between"
+                    >
+                        Modülü Başlat
+                    </Button>
+                </Card>
+
+                {/* Kebir Analysis Module */}
+                <Card className="flex flex-col items-start h-full group relative overflow-hidden transition-all duration-300 hover:shadow-2xl hover:border-orange-500/50 border-orange-500/20">
+                    <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:opacity-20 transition-opacity">
+                        <BarChart size={100} className="text-orange-500" />
+                    </div>
+
+                    <div className="w-14 h-14 mb-6 rounded-2xl bg-orange-500/20 border border-orange-500/30 flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
+                        <BarChart className="w-7 h-7 text-orange-400" />
+                    </div>
+
+                    <h3 className="text-xl font-bold text-white mb-3 group-hover:text-orange-400 transition-colors">Kebir & Ücret Analizi</h3>
+                    <p className="text-slate-400 text-sm leading-relaxed mb-8 flex-1">
+                        Defter-i Kebir dosyanızı yükleyerek firma işlem yoğunluğunu, hesap dağılımını analiz edin ve ücret belirleme verilerine ulaşın.
+                    </p>
+
+                    <Button
+                        variant="primary"
+                        onClick={() => onAction('kebir')}
                         rightIcon={<ChevronRight size={18} />}
                         className="w-full justify-between"
                     >

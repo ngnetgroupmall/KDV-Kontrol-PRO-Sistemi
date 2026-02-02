@@ -1,4 +1,4 @@
-import { LayoutDashboard, Upload, LifeBuoy, Settings, ChevronLeft, ChevronRight, ShoppingCart } from 'lucide-react';
+import { LayoutDashboard, Upload, LifeBuoy, Settings, ChevronLeft, ChevronRight, ShoppingCart, PieChart } from 'lucide-react';
 import { cn } from '../common/Button';
 import logo from '../../assets/logo.png';
 
@@ -14,7 +14,8 @@ export default function Sidebar({ activeTab, onTabChange, version, isCollapsed, 
     const menuItems = [
         { id: 'dashboard', label: 'Genel Bakış', icon: LayoutDashboard },
         { id: 'sales', label: 'Satış Kontrol', icon: Upload },
-        { id: 'purchase', label: 'Alış Kontrol', icon: ShoppingCart }, // Use Lock or ShoppingCart as appropriate
+        { id: 'purchase', label: 'Alış Kontrol', icon: ShoppingCart },
+        { id: 'kebir', label: 'Kebir Analizi', icon: PieChart },
     ];
 
     const bottomItems = [

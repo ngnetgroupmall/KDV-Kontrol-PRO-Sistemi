@@ -5,6 +5,7 @@ import HeroSection from './components/dashboard/HeroSection';
 import FeatureCards from './components/dashboard/FeatureCards';
 import { ReconciliationWizard } from './features/reconciliation/components/ReconciliationWizard';
 import { useReconciliation } from './features/reconciliation/hooks/useReconciliation';
+import KebirAnalysisPage from './features/kebir-analysis/components/KebirAnalysisPage';
 import packageJson from '../package.json';
 
 export default function App() {
@@ -68,6 +69,11 @@ export default function App() {
 
       {(activeTab === 'sales' || activeTab === 'purchase') && (
         <ReconciliationWizard recon={recon} mode={activeTab === 'sales' ? 'SALES' : 'PURCHASE'} />
+      )}
+
+      {/* Kebir Analizi Modülü */}
+      {activeTab === 'kebir' && (
+        <KebirAnalysisPage />
       )}
 
       {/* Reports (Legacy or History placeholder) */}
