@@ -55,6 +55,38 @@ export default function App() {
         </div>
       )}
 
+      {/* Global Update Toast - NEW */}
+      {state.updateInfo && (
+        <div className="fixed bottom-8 right-8 z-[100] bg-slate-800 border border-blue-500/50 text-white px-6 py-4 rounded-xl shadow-2xl flex items-center gap-4 animate-in slide-in-from-right duration-300 max-w-md">
+          <div className="bg-blue-500/20 p-2 rounded-full">
+            <Layers className="text-blue-400 animate-pulse" size={24} />
+          </div>
+          <div className="flex-1">
+            <p className="font-bold text-blue-400">Güncelleme Yazılımı</p>
+            <p className="text-sm text-slate-300">{state.updateInfo.message}</p>
+            {state.updateInfo.progress !== undefined && !state.updateInfo.downloaded && (
+              <div className="w-full bg-slate-700 h-1.5 rounded-full mt-2 overflow-hidden">
+                <div
+                  className="h-full bg-blue-500 transition-all duration-300"
+                  style={{ width: `${state.updateInfo.progress}%` }}
+                />
+              </div>
+            )}
+            {state.updateInfo.downloaded && (
+              <button
+                onClick={() => {
+                  const { ipcRenderer } = (window as any).require('electron');
+                  ipcRenderer.send('restart-app');
+                }}
+                className="mt-2 text-xs bg-blue-600 hover:bg-blue-500 px-3 py-1 rounded text-white font-bold transition-colors"
+              >
+                Şimdi Yeniden Başlat
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Views */}
       {activeTab === 'dashboard' && (
         <div className="space-y-8 animate-fade-in">

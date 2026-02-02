@@ -1,14 +1,38 @@
 import * as XLSX from 'xlsx';
 
+export interface Transaction {
+    date: Date | null;
+    description: string;
+    debit: number;
+    credit: number;
+    balance?: number;
+    voucherNo?: string;
+}
+
+export interface AccountDetail {
+    code: string;
+    name: string;
+    totalDebit: number;
+    totalCredit: number;
+    balance: number;
+    transactionCount: number;
+    transactions: Transaction[];
+}
+
 export interface KebirAnalysisResult {
     totalLines: number;
     uniqueAccountCount: number;
+    uniqueVoucherCount: number;
     monthlyDensity: { month: number; count: number; volume: number }[];
     topAccounts: { code: string; name: string; count: number; volume: number }[];
+    mizan: AccountDetail[];
     totalDebit: number;
     totalCredit: number;
     complexityScore: number;
     keyAccounts: Record<string, { count: number; volume: number }>;
+    // NEW averages
+    avgUniqueAccounts: number;
+    avgUniqueVouchers: number;
     debugMeta?: {
         headerRowIndex: number;
         detectedColumns: Record<string, number>;
@@ -51,23 +75,22 @@ export const parseKebirFile = async (file: File): Promise<KebirAnalysisResult> =
                         hdrIdx = i;
 
                         nr.forEach((cell, idx) => {
-                            if (cell.includes('tarih') && cols['date'] === undefined) {
-                                cols['date'] = idx;
-                                dateMethod = "Header";
+                            if (cell.includes('tarih') && cols['date'] === undefined) cols['date'] = idx;
+                            if ((cell === 'hesap kodu' || cell.includes('hesap kodu')) && cols['code'] === undefined) cols['code'] = idx;
+                            if ((cell.includes('hesap adı') || cell === 'açıklama' || cell === 'aciklama') && cols['name'] === undefined) cols['name'] = idx;
+                            if ((cell.includes('borç') || cell.includes('borc')) && cols['debit'] === undefined) cols['debit'] = idx;
+                            if (cell.includes('alacak') && cols['credit'] === undefined) cols['credit'] = idx;
+                            if ((cell.includes('fiş') || cell.includes('fis') || cell.includes('belge') || cell.includes('makbuz')) && cell.includes('no') && cols['voucher'] === undefined) {
+                                cols['voucher'] = idx;
                             }
-                            if ((cell === 'hesap kodu' || cell.includes('hesap kodu')) && cols['code'] === undefined) {
-                                cols['code'] = idx;
-                            }
-                            if ((cell.includes('hesap adı') || cell === 'açıklama') && cols['name'] === undefined) {
-                                cols['name'] = idx;
-                            }
-                            if ((cell.includes('borç') || cell.includes('borc')) && cols['debit'] === undefined) {
-                                cols['debit'] = idx;
-                            }
-                            if (cell.includes('alacak') && cols['credit'] === undefined) {
-                                cols['credit'] = idx;
+                            if (cell.includes('açıklama') || cell.includes('aciklama')) {
+                                cols['desc'] = idx;
                             }
                         });
+
+                        if (cols['name'] === undefined && cols['desc'] !== undefined) {
+                            cols['name'] = cols['desc'];
+                        }
                         break;
                     }
                 }
@@ -77,7 +100,7 @@ export const parseKebirFile = async (file: File): Promise<KebirAnalysisResult> =
                     return;
                 }
 
-                // Statistical date detection fallback
+                // Fallback: Statistical date detection
                 if (cols['date'] === undefined) {
                     const scores: Record<number, number> = {};
                     for (let r = hdrIdx + 1; r < Math.min(rows.length, hdrIdx + 100); r++) {
@@ -101,15 +124,22 @@ export const parseKebirFile = async (file: File): Promise<KebirAnalysisResult> =
 
                 // Process Data
                 let total = 0, tDebit = 0, tCredit = 0;
-                const monthly = Array(12).fill(0).map((_, i) => ({ month: i + 1, count: 0, volume: 0 }));
-                const mainAcc: Record<string, { count: number; volume: number; name: string }> = {};
-                const subs = new Set<string>();
+                // Enhanced monthly tracking
+                const monthly = Array(12).fill(0).map((_, i) => ({
+                    month: i + 1,
+                    count: 0,
+                    volume: 0,
+                    uniqueAccounts: new Set<string>(),
+                    uniqueVouchers: new Set<string>()
+                }));
+
+                const accountMap = new Map<string, AccountDetail>();
+                const uniqueVouchers = new Set<string>();
                 const keys: Record<string, { count: number; volume: number }> = {
                     '102': { count: 0, volume: 0 }, '191': { count: 0, volume: 0 },
                     '391': { count: 0, volume: 0 }, '601': { count: 0, volume: 0 }
                 };
 
-                // Debug: collect sample dates
                 const sampleDates: string[] = [];
                 let parsedDateCount = 0;
 
@@ -119,72 +149,148 @@ export const parseKebirFile = async (file: File): Promise<KebirAnalysisResult> =
                     const code = String(row[cols['code']] || '').trim();
                     if (!code || code.length < 3 || code.toLowerCase().includes('toplam')) continue;
 
-                    subs.add(code);
+                    let vNo = '';
+                    if (cols['voucher'] !== undefined) {
+                        vNo = String(row[cols['voucher']] || '').trim();
+                        if (vNo.length > 1) uniqueVouchers.add(vNo);
+                    }
+
                     const d = parseFloat(String(row[cols['debit']] || '0').replace(/[^0-9.,-]/g, '').replace(',', '.')) || 0;
                     const c = parseFloat(String(row[cols['credit']] || '0').replace(/[^0-9.,-]/g, '').replace(',', '.')) || 0;
                     const vol = d + c;
                     total++; tDebit += d; tCredit += c;
 
-                    // Date parsing with detailed debug
+                    // Date Parsing
+                    let rowDate: Date | null = null;
                     if (cols['date'] !== undefined) {
                         const v = row[cols['date']];
                         let m = -1;
-
-                        // Collect first 5 date samples for debug
-                        if (sampleDates.length < 5 && v !== undefined && v !== null) {
-                            sampleDates.push(`[${typeof v}] ${v instanceof Date ? v.toISOString() : String(v)}`);
-                        }
+                        if (sampleDates.length < 5 && v) sampleDates.push(String(v));
 
                         if (v instanceof Date && !isNaN(v.getTime())) {
                             m = v.getMonth();
+                            rowDate = v;
                         } else if (v) {
                             const s = String(v).trim();
-                            // DD.MM.YYYY format
-                            const dm = s.match(/^(\d{1,2})[./-](\d{1,2})[./-]/);
+                            const dm = s.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{2,4})/);
                             if (dm) {
                                 m = parseInt(dm[2]) - 1;
+                                rowDate = new Date(parseInt(dm[3]), m, parseInt(dm[1]));
+                            } else {
+                                const ymd = s.match(/^(\d{4})[./-](\d{1,2})[./-](\d{1,2})/);
+                                if (ymd) {
+                                    m = parseInt(ymd[2]) - 1;
+                                    rowDate = new Date(parseInt(ymd[1]), m, parseInt(ymd[3]));
+                                }
                             }
                         }
 
                         if (m >= 0 && m < 12) {
                             monthly[m].count++;
                             monthly[m].volume += vol;
+                            monthly[m].uniqueAccounts.add(code);
+                            if (vNo.length > 1) monthly[m].uniqueVouchers.add(vNo);
                             parsedDateCount++;
                         }
                     }
 
-                    const main = code.substring(0, 3);
-                    const nm = cols['name'] !== undefined ? String(row[cols['name']] || '') : '';
-                    if (!mainAcc[main]) mainAcc[main] = { count: 0, volume: 0, name: nm };
-                    mainAcc[main].count++; mainAcc[main].volume += vol;
-                    if (!mainAcc[main].name && nm) mainAcc[main].name = nm;
+                    // Account Stats (Mizan)
+                    const name = cols['name'] !== undefined ? String(row[cols['name']] || '') : '';
+                    const desc = cols['desc'] !== undefined ? String(row[cols['desc']] || name) : name;
 
+                    if (!accountMap.has(code)) {
+                        accountMap.set(code, {
+                            code,
+                            name,
+                            totalDebit: 0,
+                            totalCredit: 0,
+                            balance: 0,
+                            transactionCount: 0,
+                            transactions: []
+                        });
+                    }
+
+                    const acc = accountMap.get(code)!;
+                    acc.totalDebit += d;
+                    acc.totalCredit += c;
+                    acc.balance = acc.totalDebit - acc.totalCredit;
+                    acc.transactionCount++;
+                    if (name.length > acc.name.length) acc.name = name;
+
+                    acc.transactions.push({
+                        date: rowDate,
+                        description: desc,
+                        debit: d,
+                        credit: c,
+                        voucherNo: vNo
+                    });
+
+                    const main = code.substring(0, 3);
                     if (keys[main]) { keys[main].count++; keys[main].volume += vol; }
                 }
 
-                const top = Object.entries(mainAcc)
+                // Calculate Monthly Averages
+                const activeMonths = monthly.filter(m => m.count > 0);
+                const avgUniqueAcc = activeMonths.length > 0
+                    ? Math.round(activeMonths.reduce((acc, m) => acc + m.uniqueAccounts.size, 0) / activeMonths.length)
+                    : 0;
+                const avgUniqueVoucher = activeMonths.length > 0
+                    ? Math.round(activeMonths.reduce((acc, m) => acc + m.uniqueVouchers.size, 0) / activeMonths.length)
+                    : 0;
+
+                // Post-process Mizan
+                const mizan = Array.from(accountMap.values()).map(acc => {
+                    acc.transactions.sort((a, b) => {
+                        if (!a.date) return 1;
+                        if (!b.date) return -1;
+                        return a.date.getTime() - b.date.getTime();
+                    });
+                    acc.totalDebit = Math.round(acc.totalDebit * 100) / 100;
+                    acc.totalCredit = Math.round(acc.totalCredit * 100) / 100;
+                    acc.balance = Math.round(acc.balance * 100) / 100;
+                    return acc;
+                }).sort((a, b) => a.code.localeCompare(b.code));
+
+                // Top Accounts (Main)
+                const mainMap = new Map<string, { name: string, count: number, volume: number }>();
+                mizan.forEach(acc => {
+                    const main = acc.code.substring(0, 3);
+                    if (!mainMap.has(main)) mainMap.set(main, { name: acc.name, count: 0, volume: 0 });
+                    const m = mainMap.get(main)!;
+                    m.count += acc.transactionCount;
+                    m.volume += (acc.totalDebit + acc.totalCredit);
+                    // Use shortest name to try to catch Main Account name
+                    // Usually main account name is like 'BANKALAR' (very short)
+                    // Sub accounts are 'BANKALAR > X Bankası'
+                    if (!m.name || (acc.name && acc.name.length < m.name.length)) m.name = acc.name;
+                });
+
+                const top = Array.from(mainMap.entries())
                     .map(([code, v]) => ({ code, name: v.name, count: v.count, volume: v.volume }))
                     .sort((a, b) => b.count - a.count).slice(0, 50);
 
-                let score = (total / 500) + (subs.size / 20);
-                if (score > 10) score = 10;
+                let score = (total / 500) + (uniqueVouchers.size / 20); if (score > 10) score = 10;
 
                 resolve({
                     totalLines: total,
-                    uniqueAccountCount: subs.size,
-                    monthlyDensity: monthly,
+                    uniqueAccountCount: accountMap.size,
+                    uniqueVoucherCount: uniqueVouchers.size,
+                    monthlyDensity: monthly.map(m => ({ month: m.month, count: m.count, volume: m.volume })), // clean for return
                     topAccounts: top,
+                    mizan,
                     totalDebit: tDebit,
                     totalCredit: tCredit,
                     complexityScore: Math.round(score * 10) / 10,
                     keyAccounts: keys,
+                    avgUniqueAccounts: avgUniqueAcc,
+                    avgUniqueVouchers: avgUniqueVoucher,
                     debugMeta: {
                         headerRowIndex: hdrIdx,
                         detectedColumns: cols,
                         successRate: `${total} satır`,
                         fileName: file.name,
                         dateMethod,
-                        sampleDates,
+                        sampleDates: sampleDates.slice(0, 5),
                         parsedDateCount
                     }
                 });

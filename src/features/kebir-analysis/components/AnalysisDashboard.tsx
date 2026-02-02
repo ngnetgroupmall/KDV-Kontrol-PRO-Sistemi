@@ -1,7 +1,9 @@
-import type { KebirAnalysisResult } from '../utils/kebirParser';
+import type { KebirAnalysisResult, AccountDetail } from '../utils/kebirParser';
 import { Card } from '../../../components/common/Card';
-import { BarChart2, Hash, Layers, PieChart, TrendingUp, RefreshCw, Activity, Bug, AlertTriangle } from 'lucide-react';
+import { BarChart2, Hash, Layers, PieChart, TrendingUp, RefreshCw, Activity, Bug, AlertTriangle, FileText } from 'lucide-react';
 import { useState } from 'react';
+import AccountDetailModal from './AccountDetailModal';
+import MizanModal from './MizanModal';
 
 interface AnalysisDashboardProps {
     data: KebirAnalysisResult;
@@ -11,6 +13,8 @@ interface AnalysisDashboardProps {
 export default function AnalysisDashboard({ data, onReset }: AnalysisDashboardProps) {
     const [chartMode, setChartMode] = useState<'VOLUME' | 'COUNT'>('COUNT');
     const [showDebug, setShowDebug] = useState(false);
+    const [selectedAccount, setSelectedAccount] = useState<AccountDetail | null>(null);
+    const [showMizan, setShowMizan] = useState(false);
 
     const formatCurrency = (val: number) =>
         new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY' }).format(val);
@@ -31,6 +35,15 @@ export default function AnalysisDashboard({ data, onReset }: AnalysisDashboardPr
                     </p>
                 </div>
                 <div className="flex gap-2">
+                    {/* Mizan Button */}
+                    <button
+                        onClick={() => setShowMizan(true)}
+                        className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors shadow-lg shadow-blue-900/20"
+                    >
+                        <FileText size={16} />
+                        Genel Mizanı İncele
+                    </button>
+
                     <button
                         onClick={() => setShowDebug(!showDebug)}
                         className={`p-2 rounded-lg transition-colors ${showDebug ? 'bg-red-500/20 text-red-500' : 'bg-slate-800 text-slate-500'}`}
@@ -77,18 +90,29 @@ export default function AnalysisDashboard({ data, onReset }: AnalysisDashboardPr
                         <h4 className="text-slate-400 text-sm font-bold uppercase">Toplam İşlem</h4>
                     </div>
                     <p className="text-3xl font-bold text-white mb-1">{data.totalLines.toLocaleString()}</p>
-                    <p className="text-xs text-slate-500">
-                        Aylık Ort: <span className="text-blue-400 font-bold">{Math.round(data.totalLines / activeMonthCount).toLocaleString()}</span>
-                    </p>
+                    <div className="flex justify-between items-center text-xs text-slate-500">
+                        <span>Aylık Ort: <span className="text-blue-400 font-bold">{Math.round(data.totalLines / activeMonthCount).toLocaleString()}</span></span>
+                    </div>
                 </Card>
 
-                <Card className="p-6 border-l-4 border-l-purple-500">
-                    <div className="flex items-center gap-3 mb-2">
+                {/* Combined Account & Voucher Count Card */}
+                <Card className="p-6 border-l-4 border-l-purple-500 relative overflow-hidden">
+                    <div className="flex items-center gap-3 mb-4">
                         <Hash className="text-purple-500" size={20} />
-                        <h4 className="text-slate-400 text-sm font-bold uppercase">Farklı Hesap</h4>
+                        <h4 className="text-slate-400 text-sm font-bold uppercase">Varlık Sayıları</h4>
                     </div>
-                    <p className="text-3xl font-bold text-white mb-1">{data.uniqueAccountCount}</p>
-                    <p className="text-xs text-slate-500">Benzersiz alt hesap kodu</p>
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <p className="text-2xl font-bold text-white">{data.uniqueVoucherCount ? data.uniqueVoucherCount.toLocaleString() : '-'}</p>
+                            <p className="text-[10px] text-slate-500 font-bold uppercase mb-1">Tekil Fiş</p>
+                            <p className="text-[9px] text-purple-400 font-medium">Ort: {data.avgUniqueVouchers}</p>
+                        </div>
+                        <div className="text-right border-l border-slate-700/50 pl-4">
+                            <p className="text-2xl font-bold text-white">{data.uniqueAccountCount}</p>
+                            <p className="text-[10px] text-slate-500 font-bold uppercase mb-1">Tekil Hesap</p>
+                            <p className="text-[9px] text-purple-400 font-medium">Ort: {data.avgUniqueAccounts}</p>
+                        </div>
+                    </div>
                 </Card>
 
                 <Card className="p-6 border-l-4 border-l-emerald-500">
@@ -242,7 +266,7 @@ export default function AnalysisDashboard({ data, onReset }: AnalysisDashboardPr
                     )}
                 </Card>
 
-                {/* Top Accounts */}
+                {/* Top Accounts - COMPACT VIEW */}
                 <Card className="p-0 overflow-hidden flex flex-col h-[400px]">
                     <div className="p-4 border-b border-[var(--border-color)] bg-slate-800/30">
                         <h3 className="font-bold text-white">En Aktif Ana Hesaplar</h3>
@@ -251,25 +275,22 @@ export default function AnalysisDashboard({ data, onReset }: AnalysisDashboardPr
                         {data.topAccounts.slice(0, 20).map((acc, idx) => {
                             const avgVol = acc.volume / activeMonthCount;
                             return (
-                                <div key={idx} className="p-4 hover:bg-slate-800/30 transition-colors group">
-                                    <div className="flex items-center justify-between mb-1">
+                                <div key={idx} className="px-4 py-3 hover:bg-slate-800/30 transition-colors group flex items-center justify-between">
+                                    <div className="flex flex-col">
                                         <div className="flex items-center gap-2">
-                                            <span className="font-mono text-blue-400 font-bold text-lg">{acc.code}</span>
-                                            {idx < 3 && <span className="text-[10px] bg-yellow-500/20 text-yellow-500 px-1.5 rounded font-bold">TOP {idx + 1}</span>}
+                                            <span className="font-mono text-blue-400 font-bold">{acc.code}</span>
+                                            {idx < 3 && <span className="text-[10px] bg-yellow-500/20 text-yellow-500 px-1 rounded font-bold">{idx + 1}</span>}
+                                            <span className="text-sm text-slate-300 font-medium truncate max-w-[120px]" title={acc.name || ''}>
+                                                {acc.name || '-'}
+                                            </span>
                                         </div>
-                                        <span className="text-xs font-bold text-slate-500 bg-slate-800 px-2 py-0.5 rounded-full group-hover:bg-blue-500/20 group-hover:text-blue-200 transition-colors">
-                                            {acc.count} İşlem
-                                        </span>
                                     </div>
-                                    <div className="text-sm text-slate-300 truncate mb-1 font-medium">
-                                        {acc.name || 'İsim Bulunamadı'}
-                                    </div>
-                                    <div className="flex items-end justify-between mt-2">
+                                    <div className="text-right">
+                                        <div className="text-xs font-bold text-slate-200 group-hover:text-emerald-400 transition-colors">
+                                            {formatCurrency(acc.volume)}
+                                        </div>
                                         <div className="text-[10px] text-slate-500">
-                                            Aylık Ort: <span className="text-emerald-500/80">{formatCurrency(avgVol)}</span>
-                                        </div>
-                                        <div className="text-xs text-slate-300 font-bold text-right group-hover:text-emerald-400 transition-colors">
-                                            {formatCurrency(acc.volume)} Total
+                                            {acc.count} İşlem
                                         </div>
                                     </div>
                                 </div>
@@ -278,6 +299,26 @@ export default function AnalysisDashboard({ data, onReset }: AnalysisDashboardPr
                     </div>
                 </Card>
             </div>
+
+            {/* MODALS */}
+            {showMizan && data.mizan && (
+                <MizanModal
+                    data={data.mizan}
+                    onClose={() => setShowMizan(false)}
+                    onSelectAccount={(acc) => {
+                        setSelectedAccount(acc);
+                        // Optional: close Mizan modal if looking at detail, OR keep it open behind? 
+                        // UX: Keeping it open allows going back easily. Stacked modals.
+                    }}
+                />
+            )}
+
+            {selectedAccount && (
+                <AccountDetailModal
+                    account={selectedAccount}
+                    onClose={() => setSelectedAccount(null)}
+                />
+            )}
         </div>
     );
 }
