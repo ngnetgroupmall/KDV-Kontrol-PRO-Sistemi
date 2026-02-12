@@ -241,7 +241,8 @@ export function useReconciliation() {
             handleDemoData,
             resetAll,
             handleExclusionComplete,
-            setLoading
+            setLoading,
+            dismissUpdate: () => setUpdateInfo(null)
         }
     };
 }

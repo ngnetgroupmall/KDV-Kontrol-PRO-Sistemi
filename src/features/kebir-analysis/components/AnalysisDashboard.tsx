@@ -273,7 +273,6 @@ export default function AnalysisDashboard({ data, onReset }: AnalysisDashboardPr
                     </div>
                     <div className="divide-y divide-[var(--border-color)] overflow-y-auto custom-scrollbar flex-1">
                         {data.topAccounts.slice(0, 20).map((acc, idx) => {
-                            const avgVol = acc.volume / activeMonthCount;
                             return (
                                 <div key={idx} className="px-4 py-3 hover:bg-slate-800/30 transition-colors group flex items-center justify-between">
                                     <div className="flex flex-col">

@@ -62,7 +62,15 @@ export default function App() {
             <Layers className="text-blue-400 animate-pulse" size={24} />
           </div>
           <div className="flex-1">
-            <p className="font-bold text-blue-400">Güncelleme Yazılımı</p>
+            <div className="flex justify-between items-start">
+              <p className="font-bold text-blue-400">Güncelleme Yazılımı</p>
+              <button
+                onClick={actions.dismissUpdate}
+                className="text-slate-400 hover:text-white transition-colors"
+              >
+                ✕
+              </button>
+            </div>
             <p className="text-sm text-slate-300">{state.updateInfo.message}</p>
             {state.updateInfo.progress !== undefined && !state.updateInfo.downloaded && (
               <div className="w-full bg-slate-700 h-1.5 rounded-full mt-2 overflow-hidden">
