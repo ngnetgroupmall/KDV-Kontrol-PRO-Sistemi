@@ -330,15 +330,10 @@ export const runComparison = (
         const debitDiff = round2(smmmAccount.totalDebit - firmaAccount.totalDebit);
         const creditDiff = round2(smmmAccount.totalCredit - firmaAccount.totalCredit);
 
-        const hasAmountDifference =
-            Math.abs(balanceDiff) > TOLERANCE ||
-            Math.abs(debitDiff) > TOLERANCE ||
-            Math.abs(creditDiff) > TOLERANCE;
-
-        const hasTransactionDifference =
-            transactionDetail.summary.onlyInSmmm > 0 || transactionDetail.summary.onlyInFirma > 0;
-
-        const status: MatchStatus = hasAmountDifference || hasTransactionDifference ? 'DIFFERENCE' : 'MATCHED';
+        // Business rule: if balance difference is within tolerance, do not treat as erroneous
+        // even when row/debit/credit details differ.
+        const isBalanceAligned = Math.abs(balanceDiff) <= TOLERANCE;
+        const status: MatchStatus = isBalanceAligned ? 'MATCHED' : 'DIFFERENCE';
 
         results.push({
             id: uuidv4(),

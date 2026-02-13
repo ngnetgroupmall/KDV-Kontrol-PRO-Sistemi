@@ -323,8 +323,9 @@ export default function ComparisonView({
                                     Math.abs(item.difference) > TOLERANCE ||
                                     Math.abs(item.debitDifference) > TOLERANCE ||
                                     Math.abs(item.creditDifference) > TOLERANCE;
-                                const effectiveRowDiffCount = entry.isResolvedDifference ? 0 : rowDiffCount;
-                                const showRowAsDifference = !entry.isResolvedDifference && (rowDiffCount > 0 || hasAmountDiff);
+                                const isEvaluatedAsDifference = entry.effectiveStatus === 'DIFFERENCE';
+                                const effectiveRowDiffCount = isEvaluatedAsDifference ? rowDiffCount : 0;
+                                const showRowAsDifference = isEvaluatedAsDifference && (rowDiffCount > 0 || hasAmountDiff);
 
                                 return (
                                     <tr key={item.id} className="hover:bg-slate-700/30 transition-colors">
@@ -368,13 +369,13 @@ export default function ComparisonView({
                                                 <span className="text-slate-600 italic">-</span>
                                             )}
                                         </td>
-                                        <td className={`px-4 py-3 text-right font-mono ${Math.abs(item.difference) > TOLERANCE ? 'text-red-400' : 'text-slate-300'}`}>
+                                        <td className={`px-4 py-3 text-right font-mono ${(isEvaluatedAsDifference && Math.abs(item.difference) > TOLERANCE) ? 'text-red-400' : 'text-slate-300'}`}>
                                             {formatAmount(item.difference)}
                                         </td>
-                                        <td className={`px-4 py-3 text-right font-mono ${Math.abs(item.debitDifference) > TOLERANCE ? 'text-red-400' : 'text-slate-300'}`}>
+                                        <td className={`px-4 py-3 text-right font-mono ${(isEvaluatedAsDifference && Math.abs(item.debitDifference) > TOLERANCE) ? 'text-red-400' : 'text-slate-300'}`}>
                                             {formatAmount(item.debitDifference)}
                                         </td>
-                                        <td className={`px-4 py-3 text-right font-mono ${Math.abs(item.creditDifference) > TOLERANCE ? 'text-red-400' : 'text-slate-300'}`}>
+                                        <td className={`px-4 py-3 text-right font-mono ${(isEvaluatedAsDifference && Math.abs(item.creditDifference) > TOLERANCE) ? 'text-red-400' : 'text-slate-300'}`}>
                                             {formatAmount(item.creditDifference)}
                                         </td>
                                         <td className={`px-4 py-3 text-right font-mono ${showRowAsDifference ? 'text-yellow-400' : 'text-emerald-400'}`}>
