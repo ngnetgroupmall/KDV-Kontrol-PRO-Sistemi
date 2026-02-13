@@ -15,6 +15,9 @@ interface TransactionComparisonModalProps {
         reviewKey: string,
         patch: Partial<{ corrected: boolean; note?: string }>
     ) => Promise<void> | void;
+    onBulkRowReviewChange: (
+        patches: Record<string, Partial<{ corrected: boolean; note?: string }>>
+    ) => Promise<void> | void;
     onClose: () => void;
 }
 
@@ -43,8 +46,14 @@ export default function TransactionComparisonModal({
     result,
     rowReviews,
     onRowReviewChange,
+    onBulkRowReviewChange,
     onClose,
 }: TransactionComparisonModalProps) {
+    interface IndexedRow {
+        row: ComparableTransaction;
+        sourceIndex: number;
+    }
+
     const contentRef = useRef<HTMLDivElement>(null);
     const [draftNotes, setDraftNotes] = useState<Record<string, string>>({});
 
@@ -147,19 +156,34 @@ export default function TransactionComparisonModal({
     );
 
     const splitRowsByReview = (rows: ComparableTransaction[], side: 'SMMM' | 'FIRMA') => {
-        const unresolved: ComparableTransaction[] = [];
-        const corrected: ComparableTransaction[] = [];
+        const unresolved: IndexedRow[] = [];
+        const corrected: IndexedRow[] = [];
 
         rows.forEach((row, index) => {
             const reviewKey = buildReviewKey(side, row, index);
             if (rowReviews[reviewKey]?.corrected) {
-                corrected.push(row);
+                corrected.push({ row, sourceIndex: index });
             } else {
-                unresolved.push(row);
+                unresolved.push({ row, sourceIndex: index });
             }
         });
 
         return { unresolved, corrected };
+    };
+
+    const markAllAsCorrected = async (rows: IndexedRow[], side: 'SMMM' | 'FIRMA') => {
+        if (!rows.length) return;
+
+        const patches: Record<string, Partial<{ corrected: boolean; note?: string }>> = {};
+        rows.forEach(({ row, sourceIndex }) => {
+            const reviewKey = buildReviewKey(side, row, sourceIndex);
+            patches[reviewKey] = {
+                corrected: true,
+                note: getEffectiveNote(reviewKey).trim(),
+            };
+        });
+
+        await onBulkRowReviewChange(patches);
     };
 
     const smmmSplit = useMemo(
@@ -172,13 +196,7 @@ export default function TransactionComparisonModal({
         [result.unmatchedFirmaTransactions, rowReviews, accountScopeKey]
     );
 
-    const renderMovementTable = (
-        rows: ComparableTransaction[],
-        options?: { interactive?: boolean; side?: 'SMMM' | 'FIRMA' }
-    ) => {
-        const interactive = options?.interactive ?? false;
-        const side = options?.side;
-
+    const renderMovementTable = (rows: ComparableTransaction[]) => {
         if (!rows.length) {
             return <div className="text-sm text-slate-500 p-4 text-center">Kayit bulunamadi.</div>;
         }
@@ -193,21 +211,10 @@ export default function TransactionComparisonModal({
                             <th className="text-right p-2 text-slate-400 uppercase">Alacak</th>
                             <th className="text-right p-2 text-slate-400 uppercase">Bakiye</th>
                             <th className="text-left p-2 text-slate-400 uppercase">Aciklama</th>
-                            {interactive && (
-                                <>
-                                    <th className="text-left p-2 text-slate-400 uppercase">Durum</th>
-                                    <th className="text-left p-2 text-slate-400 uppercase min-w-[320px]">Not</th>
-                                </>
-                            )}
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-800">
                         {rows.map((row, index) => {
-                            const reviewKey = interactive && side ? buildReviewKey(side, row, index) : '';
-                            const review = reviewKey ? rowReviews[reviewKey] : undefined;
-                            const isCorrected = !!review?.corrected;
-                            const noteValue = reviewKey ? getEffectiveNote(reviewKey) : '';
-
                             return (
                                 <tr
                                     key={`${row.date}-${row.debit}-${row.credit}-${row.description || ''}-${index}`}
@@ -220,37 +227,80 @@ export default function TransactionComparisonModal({
                                         {typeof row.balance === 'number' ? formatAmount(row.balance) : '-'}
                                     </td>
                                     <td className="p-2 text-slate-300">{row.description || '-'}</td>
-                                    {interactive && reviewKey && (
-                                        <>
-                                            <td className="p-2">
-                                                <button
-                                                    onClick={() => toggleCorrected(reviewKey)}
-                                                    className={`inline-flex items-center gap-1.5 text-[11px] font-semibold px-2 py-1 rounded border transition-colors ${
-                                                        isCorrected
-                                                            ? 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10 hover:bg-emerald-500/20'
-                                                            : 'text-slate-300 border-slate-600 hover:border-slate-500 hover:bg-slate-800'
-                                                    }`}
-                                                >
-                                                    {isCorrected ? <CheckCircle2 size={13} /> : <Circle size={13} />}
-                                                    {isCorrected ? 'Duzeltildi' : 'Isaretle'}
-                                                </button>
-                                            </td>
-                                            <td className="p-2">
-                                                <textarea
-                                                    value={noteValue}
-                                                    onChange={(event) => {
-                                                        const value = event.target.value;
-                                                        setDraftNotes((prev) => ({ ...prev, [reviewKey]: value }));
-                                                    }}
-                                                    onBlur={(event) => commitNote(reviewKey, event.target.value)}
-                                                    onKeyDown={(event) => handleNoteKeyDown(event, reviewKey)}
-                                                    placeholder="Not ekle..."
-                                                    rows={2}
-                                                    className="w-full min-w-[320px] bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-blue-500 resize-y"
-                                                />
-                                            </td>
-                                        </>
-                                    )}
+                                </tr>
+                            );
+                        })}
+                    </tbody>
+                </table>
+            </div>
+        );
+    };
+
+    const renderReviewableTable = (rows: IndexedRow[], side: 'SMMM' | 'FIRMA') => {
+        if (!rows.length) {
+            return <div className="text-sm text-slate-500 p-4 text-center">Kayit bulunamadi.</div>;
+        }
+
+        return (
+            <div className="overflow-auto max-h-[290px] border border-slate-700 rounded-lg">
+                <table className="w-full text-xs">
+                    <thead className="bg-slate-900 sticky top-0">
+                        <tr>
+                            <th className="text-left p-2 text-slate-400 uppercase">Tarih</th>
+                            <th className="text-right p-2 text-slate-400 uppercase">Borc</th>
+                            <th className="text-right p-2 text-slate-400 uppercase">Alacak</th>
+                            <th className="text-right p-2 text-slate-400 uppercase">Bakiye</th>
+                            <th className="text-left p-2 text-slate-400 uppercase">Aciklama</th>
+                            <th className="text-left p-2 text-slate-400 uppercase">Durum</th>
+                            <th className="text-left p-2 text-slate-400 uppercase min-w-[320px]">Not</th>
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-800">
+                        {rows.map(({ row, sourceIndex }, index) => {
+                            const reviewKey = buildReviewKey(side, row, sourceIndex);
+                            const review = rowReviews[reviewKey];
+                            const isCorrected = !!review?.corrected;
+                            const noteValue = getEffectiveNote(reviewKey);
+
+                            return (
+                                <tr
+                                    key={`${row.date}-${row.debit}-${row.credit}-${row.description || ''}-${sourceIndex}-${index}`}
+                                    className="hover:bg-slate-800/40"
+                                >
+                                    <td className="p-2 text-slate-300 whitespace-nowrap">{formatDateLabel(row.date)}</td>
+                                    <td className="p-2 text-right text-slate-300 font-mono whitespace-nowrap">{formatAmount(row.debit)}</td>
+                                    <td className="p-2 text-right text-slate-300 font-mono whitespace-nowrap">{formatAmount(row.credit)}</td>
+                                    <td className="p-2 text-right text-slate-300 font-mono whitespace-nowrap">
+                                        {typeof row.balance === 'number' ? formatAmount(row.balance) : '-'}
+                                    </td>
+                                    <td className="p-2 text-slate-300">{row.description || '-'}</td>
+                                    <td className="p-2">
+                                        <button
+                                            onClick={() => toggleCorrected(reviewKey)}
+                                            className={`inline-flex items-center gap-1.5 text-[11px] font-semibold px-2 py-1 rounded border transition-colors ${
+                                                isCorrected
+                                                    ? 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10 hover:bg-emerald-500/20'
+                                                    : 'text-slate-300 border-slate-600 hover:border-slate-500 hover:bg-slate-800'
+                                            }`}
+                                        >
+                                            {isCorrected ? <CheckCircle2 size={13} /> : <Circle size={13} />}
+                                            {isCorrected ? 'Duzeltildi' : 'Isaretle'}
+                                        </button>
+                                    </td>
+                                    <td className="p-2">
+                                        <textarea
+                                            value={noteValue}
+                                            onChange={(event) => {
+                                                const value = event.target.value;
+                                                setDraftNotes((prev) => ({ ...prev, [reviewKey]: value }));
+                                            }}
+                                            onBlur={(event) => commitNote(reviewKey, event.target.value)}
+                                            onKeyDown={(event) => handleNoteKeyDown(event, reviewKey)}
+                                            placeholder="Not ekle..."
+                                            rows={2}
+                                            className="w-full min-w-[320px] bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-blue-500 resize-y"
+                                        />
+                                    </td>
                                 </tr>
                             );
                         })}
@@ -332,10 +382,17 @@ export default function TransactionComparisonModal({
                                     </span>
                                 )}
                             </h4>
-                            {renderMovementTable(smmmSplit.unresolved, {
-                                interactive: true,
-                                side: 'SMMM',
-                            })}
+                            {smmmSplit.unresolved.length > 0 && (
+                                <div className="mb-3">
+                                    <button
+                                        onClick={() => void markAllAsCorrected(smmmSplit.unresolved, 'SMMM')}
+                                        className="text-xs px-3 py-1.5 rounded border border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/10 transition-colors"
+                                    >
+                                        Tumunu Duzeltildi Isaretle
+                                    </button>
+                                </div>
+                            )}
+                            {renderReviewableTable(smmmSplit.unresolved, 'SMMM')}
                         </div>
                         <div className="bg-slate-800/20 border border-slate-700 rounded-lg p-4">
                             <h4 className="text-sm font-bold text-purple-400 mb-3">
@@ -346,10 +403,17 @@ export default function TransactionComparisonModal({
                                     </span>
                                 )}
                             </h4>
-                            {renderMovementTable(firmaSplit.unresolved, {
-                                interactive: true,
-                                side: 'FIRMA',
-                            })}
+                            {firmaSplit.unresolved.length > 0 && (
+                                <div className="mb-3">
+                                    <button
+                                        onClick={() => void markAllAsCorrected(firmaSplit.unresolved, 'FIRMA')}
+                                        className="text-xs px-3 py-1.5 rounded border border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/10 transition-colors"
+                                    >
+                                        Tumunu Duzeltildi Isaretle
+                                    </button>
+                                </div>
+                            )}
+                            {renderReviewableTable(firmaSplit.unresolved, 'FIRMA')}
                         </div>
                     </div>
 
@@ -358,13 +422,13 @@ export default function TransactionComparisonModal({
                             <h4 className="text-sm font-bold text-emerald-300 mb-3">
                                 SMMM Duzeltilen Hareketler ({smmmSplit.corrected.length})
                             </h4>
-                            {renderMovementTable(smmmSplit.corrected)}
+                            {renderMovementTable(smmmSplit.corrected.map((item) => item.row))}
                         </div>
                         <div className="bg-slate-800/20 border border-emerald-700/40 rounded-lg p-4">
                             <h4 className="text-sm font-bold text-emerald-300 mb-3">
                                 Firma Duzeltilen Hareketler ({firmaSplit.corrected.length})
                             </h4>
-                            {renderMovementTable(firmaSplit.corrected)}
+                            {renderMovementTable(firmaSplit.corrected.map((item) => item.row))}
                         </div>
                     </div>
 

@@ -206,6 +206,31 @@ export default function CurrentAccountControlPage() {
         await persistRowReviews(nextReviews);
     };
 
+    const handleBulkRowReviewChange = async (
+        patches: Record<string, Partial<{ corrected: boolean; note?: string }>>
+    ) => {
+        const nextReviews = { ...rowReviews };
+
+        Object.entries(patches).forEach(([reviewKey, patch]) => {
+            const current = nextReviews[reviewKey] || { corrected: false, note: '' };
+            const mergedCorrected = patch.corrected ?? current.corrected;
+            const mergedNote = (patch.note ?? current.note ?? '').trim();
+
+            if (!mergedCorrected && !mergedNote) {
+                delete nextReviews[reviewKey];
+            } else {
+                nextReviews[reviewKey] = {
+                    corrected: mergedCorrected,
+                    note: mergedNote || undefined,
+                    updatedAt: new Date().toISOString(),
+                };
+            }
+        });
+
+        setRowReviews(nextReviews);
+        await persistRowReviews(nextReviews);
+    };
+
     if (!activeCompany) {
         return (
             <div className="flex flex-col items-center justify-center h-[60vh] text-center animate-fade-in">
@@ -339,6 +364,7 @@ export default function CurrentAccountControlPage() {
                             onManualMatch={handleManualMatch}
                             onClearManualMatch={handleClearManualMatch}
                             onRowReviewChange={handleRowReviewChange}
+                            onBulkRowReviewChange={handleBulkRowReviewChange}
                         />
                     )}
                 </div>

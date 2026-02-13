@@ -16,6 +16,9 @@ interface ComparisonViewProps {
         reviewKey: string,
         patch: Partial<{ corrected: boolean; note?: string }>
     ) => Promise<void> | void;
+    onBulkRowReviewChange: (
+        patches: Record<string, Partial<{ corrected: boolean; note?: string }>>
+    ) => Promise<void> | void;
 }
 
 const TOLERANCE = 0.01;
@@ -33,6 +36,7 @@ export default function ComparisonView({
     onManualMatch,
     onClearManualMatch,
     onRowReviewChange,
+    onBulkRowReviewChange,
 }: ComparisonViewProps) {
     const [filter, setFilter] = useState<'ALL' | MatchStatus>('ALL');
     const [search, setSearch] = useState('');
@@ -426,6 +430,7 @@ export default function ComparisonView({
                     result={selectedResult}
                     rowReviews={rowReviews}
                     onRowReviewChange={onRowReviewChange}
+                    onBulkRowReviewChange={onBulkRowReviewChange}
                     onClose={() => setSelectedResult(null)}
                 />
             )}
