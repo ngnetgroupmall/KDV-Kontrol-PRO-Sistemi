@@ -146,6 +146,32 @@ export default function TransactionComparisonModal({
         [result.unmatchedFirmaTransactions, rowReviews, accountScopeKey]
     );
 
+    const splitRowsByReview = (rows: ComparableTransaction[], side: 'SMMM' | 'FIRMA') => {
+        const unresolved: ComparableTransaction[] = [];
+        const corrected: ComparableTransaction[] = [];
+
+        rows.forEach((row, index) => {
+            const reviewKey = buildReviewKey(side, row, index);
+            if (rowReviews[reviewKey]?.corrected) {
+                corrected.push(row);
+            } else {
+                unresolved.push(row);
+            }
+        });
+
+        return { unresolved, corrected };
+    };
+
+    const smmmSplit = useMemo(
+        () => splitRowsByReview(result.unmatchedSmmmTransactions, 'SMMM'),
+        [result.unmatchedSmmmTransactions, rowReviews, accountScopeKey]
+    );
+
+    const firmaSplit = useMemo(
+        () => splitRowsByReview(result.unmatchedFirmaTransactions, 'FIRMA'),
+        [result.unmatchedFirmaTransactions, rowReviews, accountScopeKey]
+    );
+
     const renderMovementTable = (
         rows: ComparableTransaction[],
         options?: { interactive?: boolean; side?: 'SMMM' | 'FIRMA' }
@@ -296,72 +322,49 @@ export default function TransactionComparisonModal({
                 </div>
 
                 <div ref={contentRef} className="flex-1 overflow-auto p-5 space-y-5">
-                    <div className="bg-slate-800/20 border border-slate-700 rounded-lg overflow-hidden">
-                        <div className="px-4 py-3 border-b border-slate-700">
-                            <h4 className="text-sm font-bold text-white">Satir Fark Ozeti</h4>
-                        </div>
-                        {result.transactionDiffRows.length === 0 ? (
-                            <div className="p-4 text-sm text-emerald-400">Satir bazinda fark bulunmadi.</div>
-                        ) : (
-                            <div className="overflow-auto max-h-[220px]">
-                                <table className="w-full text-xs">
-                                    <thead className="bg-slate-900 sticky top-0">
-                                        <tr>
-                                            <th className="text-left p-2 text-slate-400 uppercase">Tarih</th>
-                                            <th className="text-right p-2 text-slate-400 uppercase">Borc</th>
-                                            <th className="text-right p-2 text-slate-400 uppercase">Alacak</th>
-                                            <th className="text-right p-2 text-slate-400 uppercase">SMMM</th>
-                                            <th className="text-right p-2 text-slate-400 uppercase">Firma</th>
-                                            <th className="text-right p-2 text-red-400 uppercase">Eksik SMMM</th>
-                                            <th className="text-right p-2 text-purple-400 uppercase">Eksik Firma</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-slate-800">
-                                        {result.transactionDiffRows.map((row) => (
-                                            <tr key={row.key} className="hover:bg-slate-800/30">
-                                                <td className="p-2 text-slate-300">{formatDateLabel(row.date)}</td>
-                                                <td className="p-2 text-right text-slate-300 font-mono">{formatAmount(row.debit)}</td>
-                                                <td className="p-2 text-right text-slate-300 font-mono">{formatAmount(row.credit)}</td>
-                                                <td className="p-2 text-right text-slate-300 font-mono">{row.smmmCount}</td>
-                                                <td className="p-2 text-right text-slate-300 font-mono">{row.firmaCount}</td>
-                                                <td className="p-2 text-right text-red-400 font-mono">{row.onlyInSmmm}</td>
-                                                <td className="p-2 text-right text-purple-400 font-mono">{row.onlyInFirma}</td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
-                        )}
-                    </div>
-
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
                         <div className="bg-slate-800/20 border border-slate-700 rounded-lg p-4">
                             <h4 className="text-sm font-bold text-red-400 mb-3">
-                                SMMM Tarafinda Eslesmeyen Hareketler ({result.unmatchedSmmmTransactions.length})
-                                {result.unmatchedSmmmTransactions.length > 0 && (
+                                SMMM Tarafinda Eslesmeyen Hareketler ({smmmSplit.unresolved.length})
+                                {smmmSplit.corrected.length > 0 && (
                                     <span className="ml-2 text-xs text-emerald-300 font-medium">
                                         Duzeltildi: {smmmCorrectedCount}
                                     </span>
                                 )}
                             </h4>
-                            {renderMovementTable(result.unmatchedSmmmTransactions, {
+                            {renderMovementTable(smmmSplit.unresolved, {
                                 interactive: true,
                                 side: 'SMMM',
                             })}
                         </div>
                         <div className="bg-slate-800/20 border border-slate-700 rounded-lg p-4">
                             <h4 className="text-sm font-bold text-purple-400 mb-3">
-                                Firma Tarafinda Eslesmeyen Hareketler ({result.unmatchedFirmaTransactions.length})
-                                {result.unmatchedFirmaTransactions.length > 0 && (
+                                Firma Tarafinda Eslesmeyen Hareketler ({firmaSplit.unresolved.length})
+                                {firmaSplit.corrected.length > 0 && (
                                     <span className="ml-2 text-xs text-emerald-300 font-medium">
                                         Duzeltildi: {firmaCorrectedCount}
                                     </span>
                                 )}
                             </h4>
-                            {renderMovementTable(result.unmatchedFirmaTransactions, {
+                            {renderMovementTable(firmaSplit.unresolved, {
                                 interactive: true,
                                 side: 'FIRMA',
                             })}
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+                        <div className="bg-slate-800/20 border border-emerald-700/40 rounded-lg p-4">
+                            <h4 className="text-sm font-bold text-emerald-300 mb-3">
+                                SMMM Duzeltilen Hareketler ({smmmSplit.corrected.length})
+                            </h4>
+                            {renderMovementTable(smmmSplit.corrected)}
+                        </div>
+                        <div className="bg-slate-800/20 border border-emerald-700/40 rounded-lg p-4">
+                            <h4 className="text-sm font-bold text-emerald-300 mb-3">
+                                Firma Duzeltilen Hareketler ({firmaSplit.corrected.length})
+                            </h4>
+                            {renderMovementTable(firmaSplit.corrected)}
                         </div>
                     </div>
 
