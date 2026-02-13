@@ -111,6 +111,7 @@ const toComparableTransaction = (transaction: Transaction): ComparableTransactio
     credit: round2(transaction.credit || 0),
     balance: typeof transaction.balance === 'number' ? round2(transaction.balance) : undefined,
     description: String(transaction.description || '').trim(),
+    voucherNo: String(transaction.voucherNo || '').trim() || undefined,
 });
 
 const getTransactionKey = (transaction: ComparableTransaction): string => {
@@ -125,6 +126,7 @@ const parseTransactionKey = (key: string): ComparableTransaction => {
         credit: Number(creditCents) / 100,
         balance: undefined,
         description: '',
+        voucherNo: undefined,
     };
 };
 

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboa
 import { createPortal } from 'react-dom';
 import { CheckCircle2, Circle, Info, X } from 'lucide-react';
 import type { ComparableTransaction, ComparisonResult, TransactionReviewMap } from '../utils/types';
+import { useCompany } from '../../../context/CompanyContext';
 import {
     buildReviewKey as buildTransactionReviewKey,
     countCorrectedRows,
@@ -42,6 +43,13 @@ const toDateKey = (value: unknown): string => {
     return `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, '0')}-${String(parsed.getDate()).padStart(2, '0')}`;
 };
 
+const normalizeVoucherNo = (value: unknown): string => {
+    return String(value ?? '')
+        .trim()
+        .toLocaleUpperCase('tr-TR')
+        .replace(/\s+/g, '');
+};
+
 export default function TransactionComparisonModal({
     result,
     rowReviews,
@@ -54,8 +62,21 @@ export default function TransactionComparisonModal({
         sourceIndex: number;
     }
 
+    interface VoucherLedgerLine {
+        date: Date | null;
+        source: 'SMMM DOSYA' | 'FIRMA DOSYA' | 'KEBIR';
+        accountCode: string;
+        accountName: string;
+        description: string;
+        debit: number;
+        credit: number;
+        voucherNo: string;
+    }
+
+    const { activeCompany } = useCompany();
     const contentRef = useRef<HTMLDivElement>(null);
     const [draftNotes, setDraftNotes] = useState<Record<string, string>>({});
+    const [selectedVoucherNo, setSelectedVoucherNo] = useState<string | null>(null);
 
     useEffect(() => {
         const scrollY = window.scrollY;
@@ -90,6 +111,7 @@ export default function TransactionComparisonModal({
 
     useEffect(() => {
         setDraftNotes({});
+        setSelectedVoucherNo(null);
     }, [result.id]);
 
     const smmmAllRows = (result.smmmAccount?.transactions || []).map((tx) => ({
@@ -98,6 +120,7 @@ export default function TransactionComparisonModal({
         credit: tx.credit,
         balance: typeof tx.balance === 'number' ? tx.balance : undefined,
         description: String(tx.description || '').trim(),
+        voucherNo: String(tx.voucherNo || '').trim() || undefined,
     }));
 
     const firmaAllRows = (result.firmaAccount?.transactions || []).map((tx) => ({
@@ -106,11 +129,84 @@ export default function TransactionComparisonModal({
         credit: tx.credit,
         balance: typeof tx.balance === 'number' ? tx.balance : undefined,
         description: String(tx.description || '').trim(),
+        voucherNo: String(tx.voucherNo || '').trim() || undefined,
     }));
 
     const accountScopeKey = useMemo(() => {
         return getAccountScopeKey(result);
     }, [result.firmaAccount?.code, result.smmmAccount?.code]);
+
+    const voucherLedgerIndex = useMemo(() => {
+        const index = new Map<string, VoucherLedgerLine[]>();
+        const smmmFullData = activeCompany?.currentAccount?.smmmFullData || [];
+        const firmaFullData = activeCompany?.currentAccount?.firmaFullData || [];
+        const kebirMizan = activeCompany?.kebirAnalysis?.mizan || [];
+        const hasCurrentAccountFullData = smmmFullData.length > 0 || firmaFullData.length > 0;
+
+        const addFromAccounts = (
+            accounts: typeof smmmFullData,
+            source: VoucherLedgerLine['source']
+        ) => {
+            accounts.forEach((account) => {
+                account.transactions.forEach((transaction) => {
+                    const rawVoucherNo = String(transaction.voucherNo || '').trim();
+                    const voucherKey = normalizeVoucherNo(rawVoucherNo);
+                    if (!voucherKey) return;
+
+                    const existing = index.get(voucherKey) || [];
+                    existing.push({
+                        date: transaction.date,
+                        source,
+                        accountCode: account.code,
+                        accountName: account.name,
+                        description: String(transaction.description || '').trim(),
+                        debit: transaction.debit,
+                        credit: transaction.credit,
+                        voucherNo: rawVoucherNo,
+                    });
+                    index.set(voucherKey, existing);
+                });
+            });
+        };
+
+        if (hasCurrentAccountFullData) {
+            addFromAccounts(smmmFullData, 'SMMM DOSYA');
+            addFromAccounts(firmaFullData, 'FIRMA DOSYA');
+        } else if (kebirMizan.length > 0) {
+            addFromAccounts(kebirMizan, 'KEBIR');
+        }
+
+        index.forEach((lines) => {
+            lines.sort((left, right) => {
+                const leftTime = left.date ? left.date.getTime() : Number.MAX_SAFE_INTEGER;
+                const rightTime = right.date ? right.date.getTime() : Number.MAX_SAFE_INTEGER;
+                if (leftTime !== rightTime) return leftTime - rightTime;
+                return left.accountCode.localeCompare(right.accountCode, 'tr-TR');
+            });
+        });
+
+        return index;
+    }, [activeCompany?.currentAccount?.smmmFullData, activeCompany?.currentAccount?.firmaFullData, activeCompany?.kebirAnalysis?.mizan]);
+
+    const hasVoucherSourceData = useMemo(() => {
+        return voucherLedgerIndex.size > 0;
+    }, [voucherLedgerIndex]);
+
+    const selectedVoucherLines = useMemo(() => {
+        if (!selectedVoucherNo) return [];
+        return voucherLedgerIndex.get(normalizeVoucherNo(selectedVoucherNo)) || [];
+    }, [selectedVoucherNo, voucherLedgerIndex]);
+
+    const selectedVoucherTotals = useMemo(() => {
+        return selectedVoucherLines.reduce(
+            (acc, line) => {
+                acc.debit += line.debit;
+                acc.credit += line.credit;
+                return acc;
+            },
+            { debit: 0, credit: 0 }
+        );
+    }, [selectedVoucherLines]);
 
     const buildReviewKey = (side: 'SMMM' | 'FIRMA', row: ComparableTransaction, index: number): string => {
         return buildTransactionReviewKey(accountScopeKey, side, row, index);
@@ -196,6 +292,29 @@ export default function TransactionComparisonModal({
         [result.unmatchedFirmaTransactions, rowReviews, accountScopeKey]
     );
 
+    const openVoucherLedger = (voucherNo: string | undefined) => {
+        const clean = String(voucherNo || '').trim();
+        if (!clean) return;
+        setSelectedVoucherNo(clean);
+    };
+
+    const renderVoucherCell = (voucherNo: string | undefined) => {
+        const clean = String(voucherNo || '').trim();
+        if (!clean) {
+            return <span className="text-slate-500">-</span>;
+        }
+
+        return (
+            <button
+                onClick={() => openVoucherLedger(clean)}
+                className="text-blue-300 hover:text-blue-200 underline underline-offset-2 font-mono"
+                title="Kebirde bu fis numarasini gor"
+            >
+                {clean}
+            </button>
+        );
+    };
+
     const renderMovementTable = (rows: ComparableTransaction[]) => {
         if (!rows.length) {
             return <div className="text-sm text-slate-500 p-4 text-center">Kayit bulunamadi.</div>;
@@ -207,6 +326,7 @@ export default function TransactionComparisonModal({
                     <thead className="bg-slate-900 sticky top-0">
                         <tr>
                             <th className="text-left p-2 text-slate-400 uppercase">Tarih</th>
+                            <th className="text-left p-2 text-slate-400 uppercase">Fis No</th>
                             <th className="text-right p-2 text-slate-400 uppercase">Borc</th>
                             <th className="text-right p-2 text-slate-400 uppercase">Alacak</th>
                             <th className="text-right p-2 text-slate-400 uppercase">Bakiye</th>
@@ -221,6 +341,7 @@ export default function TransactionComparisonModal({
                                     className="hover:bg-slate-800/40"
                                 >
                                     <td className="p-2 text-slate-300 whitespace-nowrap">{formatDateLabel(row.date)}</td>
+                                    <td className="p-2 whitespace-nowrap">{renderVoucherCell(row.voucherNo)}</td>
                                     <td className="p-2 text-right text-slate-300 font-mono whitespace-nowrap">{formatAmount(row.debit)}</td>
                                     <td className="p-2 text-right text-slate-300 font-mono whitespace-nowrap">{formatAmount(row.credit)}</td>
                                     <td className="p-2 text-right text-slate-300 font-mono whitespace-nowrap">
@@ -247,6 +368,7 @@ export default function TransactionComparisonModal({
                     <thead className="bg-slate-900 sticky top-0">
                         <tr>
                             <th className="text-left p-2 text-slate-400 uppercase">Tarih</th>
+                            <th className="text-left p-2 text-slate-400 uppercase">Fis No</th>
                             <th className="text-right p-2 text-slate-400 uppercase">Borc</th>
                             <th className="text-right p-2 text-slate-400 uppercase">Alacak</th>
                             <th className="text-right p-2 text-slate-400 uppercase">Bakiye</th>
@@ -268,6 +390,7 @@ export default function TransactionComparisonModal({
                                     className="hover:bg-slate-800/40"
                                 >
                                     <td className="p-2 text-slate-300 whitespace-nowrap">{formatDateLabel(row.date)}</td>
+                                    <td className="p-2 whitespace-nowrap">{renderVoucherCell(row.voucherNo)}</td>
                                     <td className="p-2 text-right text-slate-300 font-mono whitespace-nowrap">{formatAmount(row.debit)}</td>
                                     <td className="p-2 text-right text-slate-300 font-mono whitespace-nowrap">{formatAmount(row.credit)}</td>
                                     <td className="p-2 text-right text-slate-300 font-mono whitespace-nowrap">
@@ -372,6 +495,79 @@ export default function TransactionComparisonModal({
                 </div>
 
                 <div ref={contentRef} className="flex-1 overflow-auto p-5 space-y-5">
+                    {selectedVoucherNo && (
+                        <div className="bg-slate-800/30 border border-blue-600/40 rounded-lg p-4">
+                            <div className="flex items-start justify-between gap-3 mb-3">
+                                <div>
+                                    <h4 className="text-sm font-bold text-blue-300">
+                                        Muhasebe Fisi - {selectedVoucherNo}
+                                    </h4>
+                                    <p className="text-xs text-slate-400 mt-1">
+                                        Cari detayda fis noya tiklayarak yuklenen dosyalardan eslesen muhasebe fisini goruyorsun.
+                                    </p>
+                                </div>
+                                <button
+                                    onClick={() => setSelectedVoucherNo(null)}
+                                    className="text-xs px-2 py-1 rounded border border-slate-600 text-slate-300 hover:bg-slate-700/40"
+                                >
+                                    Kapat
+                                </button>
+                            </div>
+
+                            {!hasVoucherSourceData ? (
+                                <div className="text-xs text-amber-300 bg-amber-500/10 border border-amber-500/30 rounded p-3">
+                                    Fis detayi icin uygun kaynak bulunamadi. Cari dosyalarini tekrar isleyin veya Kebir Analizi yukleyin.
+                                </div>
+                            ) : selectedVoucherLines.length === 0 ? (
+                                <div className="text-xs text-slate-400 bg-slate-900/50 border border-slate-700 rounded p-3">
+                                    Bu fis numarasi icin kayit bulunamadi.
+                                </div>
+                            ) : (
+                                <div className="space-y-3">
+                                    <div className="overflow-auto max-h-[300px] border border-slate-700 rounded-lg">
+                                        <table className="w-full text-xs">
+                                            <thead className="bg-slate-900 sticky top-0">
+                                                <tr>
+                                                    <th className="text-left p-2 text-slate-400 uppercase">Tarih</th>
+                                                    <th className="text-left p-2 text-slate-400 uppercase">Kaynak</th>
+                                                    <th className="text-left p-2 text-slate-400 uppercase">Hesap Kodu</th>
+                                                    <th className="text-left p-2 text-slate-400 uppercase">Hesap Adi</th>
+                                                    <th className="text-left p-2 text-slate-400 uppercase">Aciklama</th>
+                                                    <th className="text-right p-2 text-slate-400 uppercase">Borc</th>
+                                                    <th className="text-right p-2 text-slate-400 uppercase">Alacak</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-slate-800">
+                                                {selectedVoucherLines.map((line, index) => (
+                                                    <tr key={`${line.accountCode}-${line.description}-${index}`} className="hover:bg-slate-800/30">
+                                                        <td className="p-2 text-slate-300 whitespace-nowrap">
+                                                            {line.date ? line.date.toLocaleDateString('tr-TR') : '-'}
+                                                        </td>
+                                                        <td className="p-2 text-slate-300 whitespace-nowrap">{line.source}</td>
+                                                        <td className="p-2 text-blue-300 font-mono whitespace-nowrap">{line.accountCode}</td>
+                                                        <td className="p-2 text-slate-300">{line.accountName || '-'}</td>
+                                                        <td className="p-2 text-slate-300">{line.description || '-'}</td>
+                                                        <td className="p-2 text-right text-slate-300 font-mono whitespace-nowrap">{formatAmount(line.debit)}</td>
+                                                        <td className="p-2 text-right text-slate-300 font-mono whitespace-nowrap">{formatAmount(line.credit)}</td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+
+                                    <div className="flex justify-end gap-6 text-xs">
+                                        <div className="text-slate-300">
+                                            Toplam Borc: <span className="font-bold text-emerald-300">{formatAmount(selectedVoucherTotals.debit)}</span>
+                                        </div>
+                                        <div className="text-slate-300">
+                                            Toplam Alacak: <span className="font-bold text-rose-300">{formatAmount(selectedVoucherTotals.credit)}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
                         <div className="bg-slate-800/20 border border-slate-700 rounded-lg p-4">
                             <h4 className="text-sm font-bold text-red-400 mb-3">

@@ -60,6 +60,8 @@ export default function CurrentAccountControlPage() {
         const currentData = activeCompany.currentAccount || {
             smmmData: [] as AccountDetail[],
             firmaData: [] as AccountDetail[],
+            smmmFullData: [] as AccountDetail[],
+            firmaFullData: [] as AccountDetail[],
             mappings: {} as MappingConfig,
             rowReviews: {} as TransactionReviewMap,
         };
@@ -79,6 +81,8 @@ export default function CurrentAccountControlPage() {
         const currentData = activeCompany.currentAccount || {
             smmmData: [] as AccountDetail[],
             firmaData: [] as AccountDetail[],
+            smmmFullData: [] as AccountDetail[],
+            firmaFullData: [] as AccountDetail[],
             mappings: {} as MappingConfig,
             manualMatches: {} as Record<string, string>,
         };
@@ -101,6 +105,8 @@ export default function CurrentAccountControlPage() {
             const currentData = activeCompany.currentAccount || {
                 smmmData: [] as AccountDetail[],
                 firmaData: [] as AccountDetail[],
+                smmmFullData: [] as AccountDetail[],
+                firmaFullData: [] as AccountDetail[],
                 mappings: {} as MappingConfig,
                 manualMatches: {} as Record<string, string>,
                 rowReviews: {} as TransactionReviewMap,
@@ -110,6 +116,7 @@ export default function CurrentAccountControlPage() {
 
             if (mappingMode === 'SMMM' && smmmFile) {
                 const parsed = await parseExcelData(smmmFile, mapping);
+                const parsedFull = await parseExcelData(smmmFile, mapping, { includeAllAccounts: true });
                 setLocalSmmmData(parsed);
                 setComparisonResults([]);
                 setRowReviews({});
@@ -119,6 +126,7 @@ export default function CurrentAccountControlPage() {
                     currentAccount: {
                         ...currentData,
                         smmmData: parsed,
+                        smmmFullData: parsedFull,
                         mappings: { ...currentData.mappings, smmm: mapping },
                         rowReviews: {},
                     },
@@ -127,6 +135,7 @@ export default function CurrentAccountControlPage() {
 
             if (mappingMode === 'FIRMA' && firmaFile) {
                 const parsed = await parseExcelData(firmaFile, mapping);
+                const parsedFull = await parseExcelData(firmaFile, mapping, { includeAllAccounts: true });
                 setLocalFirmaData(parsed);
                 setComparisonResults([]);
                 setRowReviews({});
@@ -136,6 +145,7 @@ export default function CurrentAccountControlPage() {
                     currentAccount: {
                         ...currentData,
                         firmaData: parsed,
+                        firmaFullData: parsedFull,
                         mappings: { ...currentData.mappings, firma: mapping },
                         rowReviews: {},
                     },

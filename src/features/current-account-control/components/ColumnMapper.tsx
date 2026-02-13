@@ -15,7 +15,7 @@ const MAPPING_FIELDS = [
     { key: 'desc', label: 'Aciklama', required: false },
     { key: 'debit', label: 'Borc', required: true },
     { key: 'credit', label: 'Alacak', required: true },
-    { key: 'voucher', label: 'Evrak No', required: false },
+    { key: 'voucher', label: 'Fis/Evrak No', required: false },
 ];
 
 const normalizeHeader = (value: string): string => {

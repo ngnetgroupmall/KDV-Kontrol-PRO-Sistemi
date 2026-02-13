@@ -72,6 +72,8 @@ export interface Company {
     currentAccount?: {
         smmmData: AccountDetail[];
         firmaData: AccountDetail[];
+        smmmFullData?: AccountDetail[];
+        firmaFullData?: AccountDetail[];
         mappings: MappingConfig;
         manualMatches?: Record<string, string>;
         rowReviews?: Record<string, { corrected: boolean; note?: string; updatedAt?: string }>;

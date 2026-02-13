@@ -64,7 +64,8 @@ const getCell = (row: any[], index: number | null): any => {
 
 export const parseExcelData = async (
     file: File,
-    mapping: Record<string, string>
+    mapping: Record<string, string>,
+    options?: { includeAllAccounts?: boolean }
 ): Promise<AccountDetail[]> => {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
@@ -90,6 +91,7 @@ export const parseExcelData = async (
                 const debitIndex = parseIndex(mapping.debit);
                 const creditIndex = parseIndex(mapping.credit);
                 const voucherIndex = parseIndex(mapping.voucher);
+                const includeAllAccounts = options?.includeAllAccounts ?? false;
 
                 if (codeIndex === null || nameIndex === null || dateIndex === null || debitIndex === null || creditIndex === null) {
                     reject(new Error('Zorunlu alanlar eksik. Lutfen sutun eslestirmesini kontrol edin.'));
@@ -102,7 +104,8 @@ export const parseExcelData = async (
                     if (!row || !Array.isArray(row)) return;
 
                     const code = normalizeAccountCode(getCell(row, codeIndex));
-                    if (!code || !isTargetAccount(code)) return;
+                    if (!code) return;
+                    if (!includeAllAccounts && !isTargetAccount(code)) return;
 
                     const name = String(getCell(row, nameIndex) ?? '').trim();
                     if (!name || shouldSkipByName(name)) return;

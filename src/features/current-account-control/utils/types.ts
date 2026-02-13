@@ -8,6 +8,7 @@ export interface ComparableTransaction {
     credit: number;
     balance?: number;
     description?: string;
+    voucherNo?: string;
 }
 
 export interface TransactionDiffRow {
