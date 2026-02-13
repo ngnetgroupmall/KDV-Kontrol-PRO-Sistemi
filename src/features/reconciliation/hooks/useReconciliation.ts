@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import type { EInvoiceRow, AccountingRow } from '../../../types';
 import { createDemoData } from '../../../utils/demo';
 import * as XLSX from 'xlsx';
+import { useCompany } from '../../../context/CompanyContext';
 
 export interface UpdateInfo {
     message: string;
@@ -10,6 +11,8 @@ export interface UpdateInfo {
 }
 
 export function useReconciliation() {
+    const { activeCompany, updateCompany } = useCompany();
+
     const [step, setStep] = useState(0); // 0: Idle, 1: E-Invoice, 2: Exclusion, 3: Accounting(KDV), 4: Acc(Matrah), 5: Analysis, 6: Report
     const [eFiles, setEFiles] = useState<File[]>([]);
     const [accFiles, setAccFiles] = useState<File[]>([]); // KDV Files
@@ -26,6 +29,44 @@ export function useReconciliation() {
     const [error, setError] = useState<string | null>(null);
 
     const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
+
+    // Load state from activeCompany when it changes
+    useEffect(() => {
+        if (activeCompany?.reconciliation) {
+            // Restore state if exists
+            // Since we can't easily restore Files, we can only restore Data
+            const savedState = activeCompany.reconciliation;
+
+            if (savedState.eInvoiceData) setEInvoiceData(savedState.eInvoiceData);
+            if (savedState.accountingData) setAccountingData(savedState.accountingData);
+            if (savedState.accountingMatrahData) setAccountingMatrahData(savedState.accountingMatrahData);
+            if (savedState.reports) {
+                setReports(savedState.reports);
+                setStep(6);
+            } else if (savedState.eInvoiceData?.length > 0) {
+                // Try to infer step
+                setStep(2);
+            }
+        } else {
+            // Reset if no data for this company
+            // Don't reset if we are just switching tabs but keeping same company (tho activeCompany change triggers this)
+            // If activeCompany ID changes, we should reset.
+        }
+    }, [activeCompany?.id]);
+
+    // Save state to activeCompany whenever data changes (debounced ideal/manual better)
+    // For now, let's create a save function that we call when critical steps complete
+    const saveDataToCompany = async (newData: any) => {
+        if (!activeCompany) return;
+
+        await updateCompany({
+            ...activeCompany,
+            reconciliation: {
+                ...activeCompany.reconciliation,
+                ...newData
+            }
+        });
+    }
 
     // Auto-update listeners
     useEffect(() => {
@@ -61,7 +102,13 @@ export function useReconciliation() {
 
         worker.onmessage = (e) => {
             if (e.data.type === 'PARSE_SUCCESS') {
-                setEInvoiceData(prev => [...prev, ...e.data.payload.rows]);
+                const newRows = e.data.payload.rows;
+                setEInvoiceData(prev => {
+                    const updated = [...prev, ...newRows];
+                    saveDataToCompany({ eInvoiceData: updated });
+                    return updated;
+                });
+
                 if (currentFileIndex + 1 < eFiles.length) {
                     setCurrentFileIndex(currentFileIndex + 1);
                 } else {
@@ -74,7 +121,7 @@ export function useReconciliation() {
             setLoading(false);
             worker.terminate();
         };
-    }, [eFiles, currentFileIndex]);
+    }, [eFiles, currentFileIndex, activeCompany]);
 
     const processAccFile = useCallback((mapping: Record<string, string>, headerRowIndex: number, mode: 'SALES' | 'PURCHASE') => {
         const worker = new Worker(new URL('../../../workers/reconciliation.worker.ts', import.meta.url), { type: 'module' });
@@ -87,7 +134,11 @@ export function useReconciliation() {
         worker.onmessage = (e) => {
             if (e.data.type === 'PARSE_SUCCESS') {
                 const newBatch = e.data.payload.rows;
-                setAccountingData(prev => [...prev, ...newBatch]);
+                setAccountingData(prev => {
+                    const updated = [...prev, ...newBatch];
+                    saveDataToCompany({ accountingData: updated });
+                    return updated;
+                });
 
                 if (currentFileIndex + 1 < accFiles.length) {
                     setCurrentFileIndex(currentFileIndex + 1);
@@ -106,7 +157,7 @@ export function useReconciliation() {
             setLoading(false);
             worker.terminate();
         };
-    }, [accFiles, currentFileIndex]);
+    }, [accFiles, currentFileIndex, activeCompany]);
 
     const processAccMatrahFile = useCallback((mapping: Record<string, string>, headerRowIndex: number) => {
         const worker = new Worker(new URL('../../../workers/reconciliation.worker.ts', import.meta.url), { type: 'module' });
@@ -119,7 +170,11 @@ export function useReconciliation() {
         worker.onmessage = (e) => {
             if (e.data.type === 'PARSE_SUCCESS') {
                 const newBatch = e.data.payload.rows;
-                setAccountingMatrahData(prev => [...prev, ...newBatch]);
+                setAccountingMatrahData(prev => {
+                    const updated = [...prev, ...newBatch];
+                    saveDataToCompany({ accountingMatrahData: updated });
+                    return updated;
+                });
 
                 if (currentFileIndex + 1 < accMatrahFiles.length) {
                     setCurrentFileIndex(currentFileIndex + 1);
@@ -133,7 +188,7 @@ export function useReconciliation() {
             setLoading(false);
             worker.terminate();
         };
-    }, [accMatrahFiles, currentFileIndex]);
+    }, [accMatrahFiles, currentFileIndex, activeCompany]);
 
     const runReconciliation = useCallback((mode: 'SALES' | 'PURCHASE') => {
         if (eInvoiceData.length === 0 || (accountingData.length === 0 && accountingMatrahData.length === 0)) {
@@ -156,12 +211,13 @@ export function useReconciliation() {
         worker.onmessage = (e) => {
             if (e.data.type === 'RECONCILE_SUCCESS') {
                 setReports(e.data.payload);
+                saveDataToCompany({ reports: e.data.payload });
                 setStep(6);
             }
             setLoading(false);
             worker.terminate();
         };
-    }, [eInvoiceData, accountingData, accountingMatrahData, tolerance]);
+    }, [eInvoiceData, accountingData, accountingMatrahData, tolerance, activeCompany]);
 
     const handleDemoData = (type: 'EINVOICE' | 'ACCOUNTING' | 'ACCOUNTING_MATRAH') => {
         const data = createDemoData(type === 'ACCOUNTING_MATRAH' ? 'ACCOUNTING' : type);
@@ -176,7 +232,7 @@ export function useReconciliation() {
         else setAccMatrahFiles([file]);
     };
 
-    const resetAll = () => {
+    const resetAll = async () => {
         setEFiles([]);
         setAccFiles([]);
         setAccMatrahFiles([]);
@@ -188,28 +244,25 @@ export function useReconciliation() {
         setCurrentFileIndex(0);
         setError(null);
         setTolerance(0.25);
+
+        if (activeCompany) {
+            const updated = { ...activeCompany };
+            delete updated.reconciliation;
+            await updateCompany(updated);
+        }
     };
 
     const handleExclusionComplete = (statuses: string[], validities: string[], toleranceVal: number = 0.25) => {
-        setEInvoiceData(prev => prev.filter((row: any) =>
+        const filtered = eInvoiceData.filter((row: any) =>
             !statuses.includes(row["Statü"]) && !validities.includes(row["Geçerlilik Durumu"])
-        ));
+        );
+        setEInvoiceData(filtered);
+        saveDataToCompany({ eInvoiceData: filtered });
+
         setTolerance(toleranceVal);
         setStep(3);
         setCurrentFileIndex(0);
     }
-
-    // Auto-run reconciliation when step reaches 5
-    // Auto-run reconciliation when step reaches 5
-    // Note: We need to know the mode here to run it automatically. 
-    // Since we don't store mode in hook state, we might need to expose runReconciliation to be called from UI manually or pass mode to hook.
-    // However, the cleanest way without refactoring everything is to remove auto-run effect here and let the Wizard trigger it, 
-    // OR add mode to state. For now, let's remove this effect and trigger it from the UI component which knows the mode.
-    // useEffect(() => {
-    //     if (step === 5) {
-    //         runReconciliation();
-    //     }
-    // }, [step, runReconciliation]);
 
     return {
         state: {

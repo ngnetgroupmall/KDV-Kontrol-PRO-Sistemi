@@ -1,21 +1,39 @@
-import { useState } from 'react';
-import { type KebirAnalysisResult, parseKebirFile } from '../utils/kebirParser';
+import { useState, useEffect } from 'react';
+import { parseKebirFile } from '../utils/kebirParser';
 import UploadSection from './UploadSection';
 import AnalysisDashboard from './AnalysisDashboard';
-import { AlertCircle } from 'lucide-react';
+import { AlertCircle, Layers } from 'lucide-react';
+import { useCompany } from '../../../context/CompanyContext';
 
 export default function KebirAnalysisPage() {
+    const { activeCompany, updateCompany } = useCompany();
     const [step, setStep] = useState<'UPLOAD' | 'ANALYSIS'>('UPLOAD');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    const [data, setData] = useState<KebirAnalysisResult | null>(null);
+
+    // Initialize state from active company
+    useEffect(() => {
+        if (activeCompany?.kebirAnalysis) {
+            setStep('ANALYSIS');
+        } else {
+            setStep('UPLOAD');
+        }
+    }, [activeCompany?.id]);
 
     const handleFileSelect = async (file: File) => {
+        if (!activeCompany) return;
+
         setLoading(true);
         setError(null);
         try {
             const result = await parseKebirFile(file);
-            setData(result);
+
+            // Save to DB via global context
+            await updateCompany({
+                ...activeCompany,
+                kebirAnalysis: result
+            });
+
             setStep('ANALYSIS');
         } catch (err: any) {
             console.error(err);
@@ -25,19 +43,40 @@ export default function KebirAnalysisPage() {
         }
     };
 
-    const handleReset = () => {
-        setData(null);
+    const handleReset = async () => {
+        if (!activeCompany) return;
+
+        // Clear data from DB
+        const updatedCompany = { ...activeCompany };
+        delete updatedCompany.kebirAnalysis;
+        await updateCompany(updatedCompany);
+
         setStep('UPLOAD');
         setError(null);
     };
+
+    if (!activeCompany) {
+        return (
+            <div className="flex flex-col items-center justify-center h-[60vh] text-center animate-fade-in">
+                <div className="w-24 h-24 bg-slate-800 rounded-full flex items-center justify-center mb-6">
+                    <Layers className="text-slate-600 w-12 h-12" />
+                </div>
+                <h2 className="text-2xl font-bold text-white mb-2">Firma Seçimi Gerekli</h2>
+                <p className="text-slate-400 max-w-md">
+                    Kebir analizi yapmak için lütfen sağ üst köşeden bir firma seçin veya yeni bir firma oluşturun.
+                </p>
+            </div>
+        );
+    }
 
     return (
         <div className="space-y-6">
             <div className="mb-8">
                 <h1 className="text-3xl font-bold text-white mb-2">Kebir Analizi & Ücret Hesaplama</h1>
-                <p className="text-slate-400">
-                    Firma muhasebe kayıtlarını analiz ederek iş yükü ve işlem yoğunluğunu raporlayın.
-                </p>
+                <div className="flex items-center gap-2 text-slate-400 text-sm">
+                    <span className="px-2 py-0.5 bg-blue-500/10 text-blue-400 rounded border border-blue-500/20">{activeCompany.name}</span>
+                    <span>için analiz yapılıyor</span>
+                </div>
             </div>
 
             {loading && (
@@ -70,8 +109,8 @@ export default function KebirAnalysisPage() {
                 <UploadSection onFileSelect={handleFileSelect} />
             )}
 
-            {!loading && !error && step === 'ANALYSIS' && data && (
-                <AnalysisDashboard data={data} onReset={handleReset} />
+            {!loading && !error && step === 'ANALYSIS' && activeCompany.kebirAnalysis && (
+                <AnalysisDashboard data={activeCompany.kebirAnalysis} onReset={handleReset} />
             )}
         </div>
     );

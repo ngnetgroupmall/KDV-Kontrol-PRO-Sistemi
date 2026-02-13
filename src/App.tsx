@@ -6,7 +6,10 @@ import FeatureCards from './components/dashboard/FeatureCards';
 import { ReconciliationWizard } from './features/reconciliation/components/ReconciliationWizard';
 import { useReconciliation } from './features/reconciliation/hooks/useReconciliation';
 import KebirAnalysisPage from './features/kebir-analysis/components/KebirAnalysisPage';
-import packageJson from '../package.json';
+import CurrentAccountControlPage from './features/current-account-control/CurrentAccountControlPage';
+
+
+
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -30,7 +33,7 @@ export default function App() {
   };
 
   return (
-    <AppShell activeTab={activeTab} onTabChange={handleTabChange} version={packageJson.version}>
+    <AppShell activeTab={activeTab} onTabChange={handleTabChange} version="1.6.3">
 
       {/* Global Loading Overlay */}
       {state.loading && (
@@ -116,6 +119,11 @@ export default function App() {
         <KebirAnalysisPage />
       )}
 
+      {/* Cari Hesap Kontrol Modülü */}
+      {activeTab === 'current-account' && (
+        <CurrentAccountControlPage />
+      )}
+
       {/* Reports (Legacy or History placeholder) */}
       {activeTab === 'reports' && (
         <div className="flex flex-col items-center justify-center h-[60vh] text-center animate-fade-in">
@@ -128,6 +136,7 @@ export default function App() {
       )}
 
     </AppShell>
+
   );
 }
 

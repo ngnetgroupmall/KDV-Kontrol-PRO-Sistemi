@@ -3,8 +3,15 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.tsx'
 
+import { CompanyProvider } from './context/CompanyContext'
+import { ErrorBoundary } from './components/common/ErrorBoundary'
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <App />
+    <ErrorBoundary>
+      <CompanyProvider>
+        <App />
+      </CompanyProvider>
+    </ErrorBoundary>
   </StrictMode>,
 )
