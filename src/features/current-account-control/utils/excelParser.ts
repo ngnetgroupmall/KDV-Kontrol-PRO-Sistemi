@@ -1,16 +1,65 @@
 import * as XLSX from 'xlsx';
 import { parseTurkishNumber } from '../../../utils/parsers';
-import type { AccountDetail, Transaction } from '../../common/types';
+import type { AccountDetail, CurrentAccountParseSummary, Transaction } from '../../common/types';
 
-const TARGET_PREFIXES = new Set(['120', '320', '159', '340', '336']);
+const TARGET_PREFIXES = new Set(['120', '320', '159', '329', '340', '336']);
 
 const round2 = (value: number): number => Math.round((value + Number.EPSILON) * 100) / 100;
+const round4 = (value: number): number => Math.round((value + Number.EPSILON) * 10000) / 10000;
 
 const parseIndex = (value: string | undefined): number | null => {
     if (value === undefined) return null;
     const parsed = Number(value);
     if (!Number.isInteger(parsed) || parsed < 0) return null;
     return parsed;
+};
+
+const parseOptionalNumber = (value: unknown): number | undefined => {
+    if (value === null || value === undefined) return undefined;
+    if (typeof value === 'string' && value.trim() === '') return undefined;
+
+    const parsed = parseTurkishNumber(value);
+    if (!Number.isFinite(parsed)) return undefined;
+    return parsed;
+};
+
+const resolveSingleFxColumnSides = (
+    rawFxValue: number | undefined,
+    debit: number,
+    credit: number
+): { fxDebitRaw: number | undefined; fxCreditRaw: number | undefined } => {
+    if (rawFxValue === undefined || rawFxValue === 0) {
+        return { fxDebitRaw: undefined, fxCreditRaw: undefined };
+    }
+
+    const magnitude = Math.abs(rawFxValue);
+    const hasDebit = debit > 0;
+    const hasCredit = credit > 0;
+
+    if (hasDebit && !hasCredit) {
+        return { fxDebitRaw: magnitude, fxCreditRaw: undefined };
+    }
+
+    if (hasCredit && !hasDebit) {
+        return { fxDebitRaw: undefined, fxCreditRaw: magnitude };
+    }
+
+    const netTlMovement = debit - credit;
+    if (netTlMovement > 0) {
+        return { fxDebitRaw: magnitude, fxCreditRaw: undefined };
+    }
+    if (netTlMovement < 0) {
+        return { fxDebitRaw: undefined, fxCreditRaw: magnitude };
+    }
+
+    if (rawFxValue > 0) {
+        return { fxDebitRaw: magnitude, fxCreditRaw: undefined };
+    }
+    if (rawFxValue < 0) {
+        return { fxDebitRaw: undefined, fxCreditRaw: magnitude };
+    }
+
+    return { fxDebitRaw: undefined, fxCreditRaw: undefined };
 };
 
 const normalizeAccountCode = (value: any): string => String(value ?? '').trim().replace(/\s+/g, '');
@@ -65,8 +114,27 @@ const getCell = (row: any[], index: number | null): any => {
 export const parseExcelData = async (
     file: File,
     mapping: Record<string, string>,
-    options?: { includeAllAccounts?: boolean }
+    options?: ParseExcelOptions
 ): Promise<AccountDetail[]> => {
+    const result = await parseExcelDataDetailed(file, mapping, options);
+    return result.accounts;
+};
+
+export interface ParseExcelDataResult {
+    accounts: AccountDetail[];
+    summary: CurrentAccountParseSummary;
+}
+
+export interface ParseExcelOptions {
+    includeAllAccounts?: boolean;
+    includeForexOnlyMovement?: boolean;
+}
+
+export const parseExcelDataDetailed = async (
+    file: File,
+    mapping: Record<string, string>,
+    options?: ParseExcelOptions
+): Promise<ParseExcelDataResult> => {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
 
@@ -91,7 +159,26 @@ export const parseExcelData = async (
                 const debitIndex = parseIndex(mapping.debit);
                 const creditIndex = parseIndex(mapping.credit);
                 const voucherIndex = parseIndex(mapping.voucher);
+                const documentIndex = parseIndex(mapping.document);
+                const currencyIndex = parseIndex(mapping.currency);
+                const exchangeRateIndex = parseIndex(mapping.exchangeRate);
+                const fxDebitIndex = parseIndex(mapping.fxDebit);
+                const fxCreditIndex = parseIndex(mapping.fxCredit);
+                const fxBalanceIndex = parseIndex(mapping.fxBalance);
                 const includeAllAccounts = options?.includeAllAccounts ?? false;
+                const includeForexOnlyMovement = options?.includeForexOnlyMovement ?? false;
+                const summary: CurrentAccountParseSummary = {
+                    totalRows: dataRows.length,
+                    transactionRows: 0,
+                    accountCount: 0,
+                    filteredByPrefixRows: 0,
+                    skippedNoCodeRows: 0,
+                    skippedNoNameRows: 0,
+                    skippedSummaryRows: 0,
+                    zeroMovementRows: 0,
+                    invalidDateRows: 0,
+                    voucherNoRows: 0,
+                };
 
                 if (codeIndex === null || nameIndex === null || dateIndex === null || debitIndex === null || creditIndex === null) {
                     reject(new Error('Zorunlu alanlar eksik. Lutfen sutun eslestirmesini kontrol edin.'));
@@ -104,15 +191,56 @@ export const parseExcelData = async (
                     if (!row || !Array.isArray(row)) return;
 
                     const code = normalizeAccountCode(getCell(row, codeIndex));
-                    if (!code) return;
-                    if (!includeAllAccounts && !isTargetAccount(code)) return;
+                    if (!code) {
+                        summary.skippedNoCodeRows += 1;
+                        return;
+                    }
+                    if (!includeAllAccounts && !isTargetAccount(code)) {
+                        summary.filteredByPrefixRows += 1;
+                        return;
+                    }
 
                     const name = String(getCell(row, nameIndex) ?? '').trim();
-                    if (!name || shouldSkipByName(name)) return;
+                    if (!name) {
+                        summary.skippedNoNameRows += 1;
+                        return;
+                    }
+                    if (shouldSkipByName(name)) {
+                        summary.skippedSummaryRows += 1;
+                        return;
+                    }
 
                     const debit = round2(parseTurkishNumber(getCell(row, debitIndex)));
                     const credit = round2(parseTurkishNumber(getCell(row, creditIndex)));
-                    const hasMovement = debit !== 0 || credit !== 0;
+                    const currencyCode = currencyIndex === null ? undefined : String(getCell(row, currencyIndex) ?? '').trim() || undefined;
+                    const exchangeRateRaw = exchangeRateIndex === null ? undefined : parseOptionalNumber(getCell(row, exchangeRateIndex));
+                    const singleFxColumnSelected = (
+                        fxDebitIndex !== null &&
+                        fxCreditIndex !== null &&
+                        fxDebitIndex === fxCreditIndex
+                    );
+                    let fxDebitRaw = fxDebitIndex === null ? undefined : parseOptionalNumber(getCell(row, fxDebitIndex));
+                    let fxCreditRaw = fxCreditIndex === null ? undefined : parseOptionalNumber(getCell(row, fxCreditIndex));
+                    if (singleFxColumnSelected) {
+                        const resolved = resolveSingleFxColumnSides(fxDebitRaw, debit, credit);
+                        fxDebitRaw = resolved.fxDebitRaw;
+                        fxCreditRaw = resolved.fxCreditRaw;
+                    }
+                    const fxBalanceRaw = fxBalanceIndex === null ? undefined : parseOptionalNumber(getCell(row, fxBalanceIndex));
+
+                    const fxDebit = fxDebitRaw === undefined ? undefined : round4(fxDebitRaw);
+                    const fxCredit = fxCreditRaw === undefined ? undefined : round4(fxCreditRaw);
+                    const fxBalance = fxBalanceRaw === undefined ? undefined : round4(fxBalanceRaw);
+                    const exchangeRate = exchangeRateRaw === undefined ? undefined : round4(exchangeRateRaw);
+                    const hasForexMovement = (
+                        fxBalance !== undefined ||
+                        (typeof fxDebit === 'number' && fxDebit !== 0) ||
+                        (typeof fxCredit === 'number' && fxCredit !== 0)
+                    );
+                    const hasMovement = debit !== 0 || credit !== 0 || (includeForexOnlyMovement && hasForexMovement);
+                    if (!hasMovement) {
+                        summary.zeroMovementRows += 1;
+                    }
 
                     const key = code;
                     if (!accountMap.has(key)) {
@@ -137,14 +265,38 @@ export const parseExcelData = async (
                         account.totalCredit = round2(account.totalCredit + credit);
                         account.transactionCount += 1;
 
+                        const rawDateCell = getCell(row, dateIndex);
+                        const parsedDate = parseDate(rawDateCell);
+                        if (
+                            rawDateCell !== null &&
+                            rawDateCell !== undefined &&
+                            String(rawDateCell).trim() !== '' &&
+                            !parsedDate
+                        ) {
+                            summary.invalidDateRows += 1;
+                        }
+
+                        const voucherNo = voucherIndex === null ? undefined : String(getCell(row, voucherIndex) ?? '').trim() || undefined;
+                        const documentNo = documentIndex === null ? undefined : String(getCell(row, documentIndex) ?? '').trim() || undefined;
+                        if (voucherNo) {
+                            summary.voucherNoRows += 1;
+                        }
+
                         const transaction: Transaction = {
-                            date: parseDate(getCell(row, dateIndex)),
+                            date: parsedDate,
                             description: String(getCell(row, descIndex) ?? '').trim(),
                             debit,
                             credit,
-                            voucherNo: voucherIndex === null ? undefined : String(getCell(row, voucherIndex) ?? '').trim() || undefined,
+                            voucherNo,
+                            documentNo: documentNo || voucherNo,
+                            currencyCode,
+                            exchangeRate,
+                            fxDebit,
+                            fxCredit,
+                            fxBalance,
                         };
                         account.transactions.push(transaction);
+                        summary.transactionRows += 1;
                     }
                 });
 
@@ -156,9 +308,25 @@ export const parseExcelData = async (
                     });
 
                     let runningBalance = 0;
+                    const runningFxByCurrency = new Map<string, number>();
                     account.transactions.forEach((transaction) => {
                         runningBalance = round2(runningBalance + transaction.debit - transaction.credit);
                         transaction.balance = runningBalance;
+
+                        const currencyKey = String(transaction.currencyCode || '').toLocaleUpperCase('tr-TR');
+                        if (typeof transaction.fxBalance === 'number') {
+                            runningFxByCurrency.set(currencyKey, round4(transaction.fxBalance));
+                            return;
+                        }
+
+                        const fxDebit = typeof transaction.fxDebit === 'number' ? transaction.fxDebit : 0;
+                        const fxCredit = typeof transaction.fxCredit === 'number' ? transaction.fxCredit : 0;
+                        if (fxDebit !== 0 || fxCredit !== 0) {
+                            const previous = runningFxByCurrency.get(currencyKey) || 0;
+                            const next = round4(previous + fxDebit - fxCredit);
+                            runningFxByCurrency.set(currencyKey, next);
+                            transaction.fxBalance = next;
+                        }
                     });
 
                     account.totalDebit = round2(account.totalDebit);
@@ -173,7 +341,11 @@ export const parseExcelData = async (
                     return a.name.localeCompare(b.name, 'tr-TR');
                 });
 
-                resolve(accounts);
+                summary.accountCount = accounts.length;
+                resolve({
+                    accounts,
+                    summary,
+                });
             } catch (error) {
                 reject(error);
             }

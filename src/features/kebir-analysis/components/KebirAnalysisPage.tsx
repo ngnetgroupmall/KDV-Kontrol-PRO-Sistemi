@@ -6,7 +6,7 @@ import { AlertCircle, Layers } from 'lucide-react';
 import { useCompany } from '../../../context/CompanyContext';
 
 export default function KebirAnalysisPage() {
-    const { activeCompany, updateCompany } = useCompany();
+    const { activeCompany, patchActiveCompany, setActiveUploads } = useCompany();
     const [step, setStep] = useState<'UPLOAD' | 'ANALYSIS'>('UPLOAD');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -18,26 +18,29 @@ export default function KebirAnalysisPage() {
         } else {
             setStep('UPLOAD');
         }
-    }, [activeCompany?.id]);
+    }, [activeCompany?.id, activeCompany?.kebirAnalysis]);
 
     const handleFileSelect = async (file: File) => {
         if (!activeCompany) return;
 
+        setActiveUploads((current) => ({
+            ...current,
+            kebirFile: file,
+        }));
         setLoading(true);
         setError(null);
         try {
             const result = await parseKebirFile(file);
 
             // Save to DB via global context
-            await updateCompany({
-                ...activeCompany,
-                kebirAnalysis: result
-            });
+            await patchActiveCompany(() => ({
+                kebirAnalysis: result,
+            }));
 
             setStep('ANALYSIS');
-        } catch (err: any) {
+        } catch (err: unknown) {
             console.error(err);
-            setError(err.message || 'Dosya işlenirken bilinmeyen bir hata oluştu.');
+            setError(err instanceof Error ? err.message : 'Dosya işlenirken bilinmeyen bir hata oluştu.');
         } finally {
             setLoading(false);
         }
@@ -46,10 +49,14 @@ export default function KebirAnalysisPage() {
     const handleReset = async () => {
         if (!activeCompany) return;
 
+        setActiveUploads((current) => ({
+            ...current,
+            kebirFile: null,
+        }));
         // Clear data from DB
-        const updatedCompany = { ...activeCompany };
-        delete updatedCompany.kebirAnalysis;
-        await updateCompany(updatedCompany);
+        await patchActiveCompany(() => ({
+            kebirAnalysis: undefined,
+        }));
 
         setStep('UPLOAD');
         setError(null);

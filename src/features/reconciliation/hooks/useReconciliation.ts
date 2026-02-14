@@ -10,140 +10,218 @@ export interface UpdateInfo {
     downloaded: boolean;
 }
 
-export function useReconciliation() {
-    const { activeCompany, updateCompany } = useCompany();
+type ReconciliationReports = Record<string, unknown>;
 
-    const [step, setStep] = useState(0); // 0: Idle, 1: E-Invoice, 2: Exclusion, 3: Accounting(KDV), 4: Acc(Matrah), 5: Analysis, 6: Report
+export function useReconciliation() {
+    const { activeCompany, patchActiveCompany, activeUploads, setActiveUploads } = useCompany();
+
+    const [step, setStep] = useState(0);
     const [eFiles, setEFiles] = useState<File[]>([]);
-    const [accFiles, setAccFiles] = useState<File[]>([]); // KDV Files
-    const [accMatrahFiles, setAccMatrahFiles] = useState<File[]>([]); // Matrah Files
+    const [accFiles, setAccFiles] = useState<File[]>([]);
+    const [accMatrahFiles, setAccMatrahFiles] = useState<File[]>([]);
 
     const [currentFileIndex, setCurrentFileIndex] = useState(0);
     const [eInvoiceData, setEInvoiceData] = useState<EInvoiceRow[]>([]);
-    const [accountingData, setAccountingData] = useState<AccountingRow[]>([]); // KDV Data
-    const [accountingMatrahData, setAccountingMatrahData] = useState<AccountingRow[]>([]); // Matrah Data
+    const [accountingData, setAccountingData] = useState<AccountingRow[]>([]);
+    const [accountingMatrahData, setAccountingMatrahData] = useState<AccountingRow[]>([]);
     const [tolerance, setTolerance] = useState<number>(0.25);
 
-    const [reports, setReports] = useState<any>(null);
+    const [reports, setReports] = useState<ReconciliationReports | null>(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
-
     const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
 
-    // Load state from activeCompany when it changes
-    useEffect(() => {
-        if (activeCompany?.reconciliation) {
-            // Restore state if exists
-            // Since we can't easily restore Files, we can only restore Data
-            const savedState = activeCompany.reconciliation;
-
-            if (savedState.eInvoiceData) setEInvoiceData(savedState.eInvoiceData);
-            if (savedState.accountingData) setAccountingData(savedState.accountingData);
-            if (savedState.accountingMatrahData) setAccountingMatrahData(savedState.accountingMatrahData);
-            if (savedState.reports) {
-                setReports(savedState.reports);
-                setStep(6);
-            } else if (savedState.eInvoiceData?.length > 0) {
-                // Try to infer step
-                setStep(2);
-            }
-        } else {
-            // Reset if no data for this company
-            // Don't reset if we are just switching tabs but keeping same company (tho activeCompany change triggers this)
-            // If activeCompany ID changes, we should reset.
-        }
-    }, [activeCompany?.id]);
-
-    // Save state to activeCompany whenever data changes (debounced ideal/manual better)
-    // For now, let's create a save function that we call when critical steps complete
-    const saveDataToCompany = async (newData: any) => {
-        if (!activeCompany) return;
-
-        await updateCompany({
-            ...activeCompany,
+    const setSharedEFiles = useCallback((files: File[]) => {
+        setEFiles(files);
+        setActiveUploads((current) => ({
+            ...current,
             reconciliation: {
-                ...activeCompany.reconciliation,
-                ...newData
-            }
-        });
-    }
+                ...current.reconciliation,
+                eInvoiceFiles: files,
+            },
+        }));
+    }, [setActiveUploads]);
 
-    // Auto-update listeners
+    const setSharedAccFiles = useCallback((files: File[]) => {
+        setAccFiles(files);
+        setActiveUploads((current) => ({
+            ...current,
+            reconciliation: {
+                ...current.reconciliation,
+                accountingFiles: files,
+            },
+        }));
+    }, [setActiveUploads]);
+
+    const setSharedAccMatrahFiles = useCallback((files: File[]) => {
+        setAccMatrahFiles(files);
+        setActiveUploads((current) => ({
+            ...current,
+            reconciliation: {
+                ...current.reconciliation,
+                accountingMatrahFiles: files,
+            },
+        }));
+    }, [setActiveUploads]);
+
     useEffect(() => {
-        const { ipcRenderer } = (window as any).require ? (window as any).require('electron') : { ipcRenderer: null };
-        if (!ipcRenderer) return;
+        setEFiles(activeUploads.reconciliation.eInvoiceFiles);
+        setAccFiles(activeUploads.reconciliation.accountingFiles);
+        setAccMatrahFiles(activeUploads.reconciliation.accountingMatrahFiles);
+        setCurrentFileIndex(0);
+        setError(null);
 
-        ipcRenderer.on('update-message', (_: any, message: string) => {
-            setUpdateInfo(prev => ({ message, progress: prev?.progress, downloaded: false }));
+        if (!activeCompany) {
+            setEInvoiceData([]);
+            setAccountingData([]);
+            setAccountingMatrahData([]);
+            setReports(null);
+            setTolerance(0.25);
+            setStep(0);
+            return;
+        }
+
+        if (activeCompany.reconciliation) {
+            const savedState = activeCompany.reconciliation;
+            setEInvoiceData(savedState.eInvoiceData || []);
+            setAccountingData(savedState.accountingData || []);
+            setAccountingMatrahData(savedState.accountingMatrahData || []);
+            setReports(savedState.reports || null);
+            setTolerance(typeof savedState.tolerance === 'number' ? savedState.tolerance : 0.25);
+
+            if (savedState.reports) {
+                setStep(6);
+            } else if ((savedState.eInvoiceData || []).length > 0) {
+                setStep(2);
+            } else {
+                setStep(1);
+            }
+            return;
+        }
+
+        setEInvoiceData([]);
+        setAccountingData([]);
+        setAccountingMatrahData([]);
+        setReports(null);
+        setTolerance(0.25);
+        setStep(1);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [
+        activeCompany?.id,
+        activeUploads.reconciliation.eInvoiceFiles,
+        activeUploads.reconciliation.accountingFiles,
+        activeUploads.reconciliation.accountingMatrahFiles,
+    ]);
+
+    const saveDataToCompany = useCallback(async (newData: Record<string, unknown>) => {
+        await patchActiveCompany((company) => ({
+            reconciliation: {
+                ...(company.reconciliation || {}),
+                ...newData,
+            },
+        }));
+    }, [patchActiveCompany]);
+
+    useEffect(() => {
+        const api = window.electronAPI;
+        if (!api) return;
+
+        const unsubscribeMessage = api.onUpdateMessage((message: string) => {
+            setUpdateInfo((prev) => ({ message, progress: prev?.progress, downloaded: false }));
         });
 
-        ipcRenderer.on('update-download-progress', (_: any, percent: number) => {
-            setUpdateInfo(prev => ({ message: prev?.message || '', progress: percent, downloaded: false }));
+        const unsubscribeProgress = api.onUpdateDownloadProgress((percent: number) => {
+            setUpdateInfo((prev) => ({ message: prev?.message || '', progress: percent, downloaded: false }));
         });
 
-        ipcRenderer.on('update-downloaded', (_: any, message: string) => {
+        const unsubscribeDownloaded = api.onUpdateDownloaded((message: string) => {
             setUpdateInfo({ message, downloaded: true, progress: 100 });
         });
 
         return () => {
-            ipcRenderer.removeAllListeners('update-message');
-            ipcRenderer.removeAllListeners('update-download-progress');
-            ipcRenderer.removeAllListeners('update-downloaded');
+            unsubscribeMessage();
+            unsubscribeProgress();
+            unsubscribeDownloaded();
         };
     }, []);
 
     const processEFile = useCallback((mapping: Record<string, string>, headerRowIndex: number, mode: 'SALES' | 'PURCHASE') => {
+        const currentFile = eFiles[currentFileIndex];
+        if (!currentFile) {
+            setError('Secili e-fatura dosyasi bulunamadi.');
+            return;
+        }
+
         const worker = new Worker(new URL('../../../workers/reconciliation.worker.ts', import.meta.url), { type: 'module' });
         setLoading(true);
         worker.postMessage({
             type: 'PARSE_EXCEL',
-            payload: { file: eFiles[currentFileIndex], mapping, fileType: 'EINVOICE', fileName: eFiles[currentFileIndex].name, headerRowIndex, mode }
+            payload: {
+                file: currentFile,
+                mapping,
+                fileType: 'EINVOICE',
+                fileName: currentFile.name,
+                headerRowIndex,
+                mode,
+            },
         });
 
-        worker.onmessage = (e) => {
-            if (e.data.type === 'PARSE_SUCCESS') {
-                const newRows = e.data.payload.rows;
-                setEInvoiceData(prev => {
+        worker.onmessage = (event) => {
+            if (event.data.type === 'PARSE_SUCCESS') {
+                const newRows = event.data.payload.rows;
+                setEInvoiceData((prev) => {
                     const updated = [...prev, ...newRows];
-                    saveDataToCompany({ eInvoiceData: updated });
+                    void saveDataToCompany({ eInvoiceData: updated });
                     return updated;
                 });
 
                 if (currentFileIndex + 1 < eFiles.length) {
                     setCurrentFileIndex(currentFileIndex + 1);
                 } else {
-                    setStep(2); // Go to Exclusion
+                    setStep(2);
                     setCurrentFileIndex(0);
                 }
-            } else if (e.data.type === 'PARSE_ERROR') {
-                setError(e.data.payload);
+            } else if (event.data.type === 'PARSE_ERROR') {
+                setError(event.data.payload);
             }
             setLoading(false);
             worker.terminate();
         };
-    }, [eFiles, currentFileIndex, activeCompany]);
+    }, [eFiles, currentFileIndex, saveDataToCompany]);
 
     const processAccFile = useCallback((mapping: Record<string, string>, headerRowIndex: number, mode: 'SALES' | 'PURCHASE') => {
+        const currentFile = accFiles[currentFileIndex];
+        if (!currentFile) {
+            setError('Secili muhasebe dosyasi bulunamadi.');
+            return;
+        }
+
         const worker = new Worker(new URL('../../../workers/reconciliation.worker.ts', import.meta.url), { type: 'module' });
         setLoading(true);
         worker.postMessage({
             type: 'PARSE_EXCEL',
-            payload: { file: accFiles[currentFileIndex], mapping, fileType: 'ACCOUNTING', fileName: accFiles[currentFileIndex].name, headerRowIndex, mode }
+            payload: {
+                file: currentFile,
+                mapping,
+                fileType: 'ACCOUNTING',
+                fileName: currentFile.name,
+                headerRowIndex,
+                mode,
+            },
         });
 
-        worker.onmessage = (e) => {
-            if (e.data.type === 'PARSE_SUCCESS') {
-                const newBatch = e.data.payload.rows;
-                setAccountingData(prev => {
+        worker.onmessage = (event) => {
+            if (event.data.type === 'PARSE_SUCCESS') {
+                const newBatch = event.data.payload.rows;
+                setAccountingData((prev) => {
                     const updated = [...prev, ...newBatch];
-                    saveDataToCompany({ accountingData: updated });
+                    void saveDataToCompany({ accountingData: updated });
                     return updated;
                 });
 
                 if (currentFileIndex + 1 < accFiles.length) {
                     setCurrentFileIndex(currentFileIndex + 1);
                 } else {
-                    // Move to Step 4 (Matrah Upload) or Step 5 (Analysis) for Purchase
                     if (mode === 'PURCHASE') {
                         setStep(5);
                     } else {
@@ -151,48 +229,59 @@ export function useReconciliation() {
                     }
                     setCurrentFileIndex(0);
                 }
-            } else if (e.data.type === 'PARSE_ERROR') {
-                setError(e.data.payload);
+            } else if (event.data.type === 'PARSE_ERROR') {
+                setError(event.data.payload);
             }
             setLoading(false);
             worker.terminate();
         };
-    }, [accFiles, currentFileIndex, activeCompany]);
+    }, [accFiles, currentFileIndex, saveDataToCompany]);
 
     const processAccMatrahFile = useCallback((mapping: Record<string, string>, headerRowIndex: number) => {
+        const currentFile = accMatrahFiles[currentFileIndex];
+        if (!currentFile) {
+            setError('Secili matrah dosyasi bulunamadi.');
+            return;
+        }
+
         const worker = new Worker(new URL('../../../workers/reconciliation.worker.ts', import.meta.url), { type: 'module' });
         setLoading(true);
         worker.postMessage({
             type: 'PARSE_EXCEL',
-            payload: { file: accMatrahFiles[currentFileIndex], mapping, fileType: 'ACCOUNTING', fileName: accMatrahFiles[currentFileIndex].name, headerRowIndex } // Matrah doesn't strictly need mode if field mapping handles it, but consistency is good.
+            payload: {
+                file: currentFile,
+                mapping,
+                fileType: 'ACCOUNTING',
+                fileName: currentFile.name,
+                headerRowIndex,
+            },
         });
 
-        worker.onmessage = (e) => {
-            if (e.data.type === 'PARSE_SUCCESS') {
-                const newBatch = e.data.payload.rows;
-                setAccountingMatrahData(prev => {
+        worker.onmessage = (event) => {
+            if (event.data.type === 'PARSE_SUCCESS') {
+                const newBatch = event.data.payload.rows;
+                setAccountingMatrahData((prev) => {
                     const updated = [...prev, ...newBatch];
-                    saveDataToCompany({ accountingMatrahData: updated });
+                    void saveDataToCompany({ accountingMatrahData: updated });
                     return updated;
                 });
 
                 if (currentFileIndex + 1 < accMatrahFiles.length) {
                     setCurrentFileIndex(currentFileIndex + 1);
                 } else {
-                    // Start Analysis (Step 5)
                     setStep(5);
                 }
-            } else if (e.data.type === 'PARSE_ERROR') {
-                setError(e.data.payload);
+            } else if (event.data.type === 'PARSE_ERROR') {
+                setError(event.data.payload);
             }
             setLoading(false);
             worker.terminate();
         };
-    }, [accMatrahFiles, currentFileIndex, activeCompany]);
+    }, [accMatrahFiles, currentFileIndex, saveDataToCompany]);
 
     const runReconciliation = useCallback((mode: 'SALES' | 'PURCHASE') => {
         if (eInvoiceData.length === 0 || (accountingData.length === 0 && accountingMatrahData.length === 0)) {
-            setError("Veri setleri eksik.");
+            setError('Veri setleri eksik.');
             return;
         }
 
@@ -205,37 +294,39 @@ export function useReconciliation() {
                 accountingVATRows: accountingData,
                 accountingMatrahRows: accountingMatrahData,
                 tolerance,
-                mode
-            }
+                mode,
+            },
         });
-        worker.onmessage = (e) => {
-            if (e.data.type === 'RECONCILE_SUCCESS') {
-                setReports(e.data.payload);
-                saveDataToCompany({ reports: e.data.payload });
+        worker.onmessage = (event) => {
+            if (event.data.type === 'RECONCILE_SUCCESS') {
+                setReports(event.data.payload);
+                void saveDataToCompany({ reports: event.data.payload });
                 setStep(6);
             }
             setLoading(false);
             worker.terminate();
         };
-    }, [eInvoiceData, accountingData, accountingMatrahData, tolerance, activeCompany]);
+    }, [eInvoiceData, accountingData, accountingMatrahData, tolerance, saveDataToCompany]);
 
     const handleDemoData = (type: 'EINVOICE' | 'ACCOUNTING' | 'ACCOUNTING_MATRAH') => {
         const data = createDemoData(type === 'ACCOUNTING_MATRAH' ? 'ACCOUNTING' : type);
         const ws = XLSX.utils.json_to_sheet(data);
         const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, "Demo");
+        XLSX.utils.book_append_sheet(wb, ws, 'Demo');
         const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
-        const file = new File([wbout], `${type.toLowerCase()}_demo.xlsx`, { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+        const file = new File([wbout], `${type.toLowerCase()}_demo.xlsx`, {
+            type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        });
 
-        if (type === 'EINVOICE') setEFiles([file]);
-        else if (type === 'ACCOUNTING') setAccFiles([file]);
-        else setAccMatrahFiles([file]);
+        if (type === 'EINVOICE') setSharedEFiles([file]);
+        else if (type === 'ACCOUNTING') setSharedAccFiles([file]);
+        else setSharedAccMatrahFiles([file]);
     };
 
     const resetAll = async () => {
-        setEFiles([]);
-        setAccFiles([]);
-        setAccMatrahFiles([]);
+        setSharedEFiles([]);
+        setSharedAccFiles([]);
+        setSharedAccMatrahFiles([]);
         setEInvoiceData([]);
         setAccountingData([]);
         setAccountingMatrahData([]);
@@ -246,23 +337,35 @@ export function useReconciliation() {
         setTolerance(0.25);
 
         if (activeCompany) {
-            const updated = { ...activeCompany };
-            delete updated.reconciliation;
-            await updateCompany(updated);
+            await patchActiveCompany(() => ({ reconciliation: undefined }));
         }
     };
 
+    const pickFieldValue = (row: Record<string, unknown>, keys: string[]): string => {
+        for (const key of keys) {
+            const value = row[key];
+            if (typeof value === 'string' && value.trim()) {
+                return value.trim();
+            }
+        }
+        return '';
+    };
+
     const handleExclusionComplete = (statuses: string[], validities: string[], toleranceVal: number = 0.25) => {
-        const filtered = eInvoiceData.filter((row: any) =>
-            !statuses.includes(row["Statü"]) && !validities.includes(row["Geçerlilik Durumu"])
-        );
+        const filtered = eInvoiceData.filter((row) => {
+            const rowRecord = row as unknown as Record<string, unknown>;
+            const status = pickFieldValue(rowRecord, ['Statü', 'Statu', 'StatÃ¼']);
+            const validity = pickFieldValue(rowRecord, ['Geçerlilik Durumu', 'Gecerlilik Durumu', 'GeÃ§erlilik Durumu']);
+            return !statuses.includes(status) && !validities.includes(validity);
+        });
+
         setEInvoiceData(filtered);
-        saveDataToCompany({ eInvoiceData: filtered });
+        void saveDataToCompany({ eInvoiceData: filtered });
 
         setTolerance(toleranceVal);
         setStep(3);
         setCurrentFileIndex(0);
-    }
+    };
 
     return {
         state: {
@@ -278,13 +381,13 @@ export function useReconciliation() {
             loading,
             error,
             updateInfo,
-            tolerance
+            tolerance,
         },
         actions: {
             setStep,
-            setEFiles,
-            setAccFiles,
-            setAccMatrahFiles,
+            setEFiles: setSharedEFiles,
+            setAccFiles: setSharedAccFiles,
+            setAccMatrahFiles: setSharedAccMatrahFiles,
             setCurrentFileIndex,
             setError,
             processEFile,
@@ -295,7 +398,7 @@ export function useReconciliation() {
             resetAll,
             handleExclusionComplete,
             setLoading,
-            dismissUpdate: () => setUpdateInfo(null)
-        }
+            dismissUpdate: () => setUpdateInfo(null),
+        },
     };
 }

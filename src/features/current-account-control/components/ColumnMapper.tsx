@@ -15,7 +15,13 @@ const MAPPING_FIELDS = [
     { key: 'desc', label: 'Aciklama', required: false },
     { key: 'debit', label: 'Borc', required: true },
     { key: 'credit', label: 'Alacak', required: true },
-    { key: 'voucher', label: 'Fis/Evrak No', required: false },
+    { key: 'voucher', label: 'Fis No', required: false },
+    { key: 'document', label: 'Evrak No', required: false },
+    { key: 'currency', label: 'Doviz Cinsi', required: false },
+    { key: 'exchangeRate', label: 'Kur', required: false },
+    { key: 'fxDebit', label: 'Doviz Borc', required: false },
+    { key: 'fxCredit', label: 'Doviz Alacak', required: false },
+    { key: 'fxBalance', label: 'Doviz Bakiye', required: false },
 ];
 
 const normalizeHeader = (value: string): string => {
@@ -31,7 +37,7 @@ const normalizeHeader = (value: string): string => {
 const detectHeaderRowIndex = (rows: any[][]): number => {
     let bestIndex = 0;
     let bestScore = -1;
-    const keywords = ['hesap', 'kod', 'ad', 'tarih', 'aciklama', 'borc', 'alacak', 'evrak', 'fis'];
+    const keywords = ['hesap', 'kod', 'ad', 'tarih', 'aciklama', 'borc', 'alacak', 'evrak', 'fis', 'doviz', 'kur'];
 
     for (let i = 0; i < Math.min(rows.length, 25); i += 1) {
         const row = rows[i] || [];
@@ -87,9 +93,15 @@ export default function ColumnMapper({ file, type, onMappingComplete, onCancel }
                     else if (normalized.includes('hesap adi') || normalized.includes('hesap unvani')) autoMapping.name = String(idx);
                     else if (normalized.includes('tarih')) autoMapping.date = String(idx);
                     else if (normalized.includes('aciklama')) autoMapping.desc = String(idx);
+                    else if (normalized.includes('doviz') && normalized.includes('borc')) autoMapping.fxDebit = String(idx);
+                    else if (normalized.includes('doviz') && normalized.includes('alacak')) autoMapping.fxCredit = String(idx);
+                    else if (normalized.includes('doviz') && normalized.includes('bakiye')) autoMapping.fxBalance = String(idx);
+                    else if (normalized.includes('doviz') && (normalized.includes('cinsi') || normalized.includes('tipi') || normalized.includes('para birimi'))) autoMapping.currency = String(idx);
+                    else if (normalized === 'kur' || normalized.includes('doviz kuru') || normalized.includes('efektif')) autoMapping.exchangeRate = String(idx);
                     else if (normalized.includes('borc')) autoMapping.debit = String(idx);
                     else if (normalized.includes('alacak')) autoMapping.credit = String(idx);
-                    else if (normalized.includes('evrak') || normalized.includes('fis')) autoMapping.voucher = String(idx);
+                    else if (normalized.includes('fis') || normalized.includes('yevmiye')) autoMapping.voucher = String(idx);
+                    else if (normalized.includes('evrak') || normalized.includes('belge')) autoMapping.document = String(idx);
                 });
 
                 setMapping(autoMapping);
@@ -152,6 +164,10 @@ export default function ColumnMapper({ file, type, onMappingComplete, onCancel }
                             </select>
                         </div>
                     ))}
+                    <p className="text-xs text-slate-500">
+                        Doviz hareketi tek sutunda ise ayni kolonu hem <span className="text-slate-300">Doviz Borc</span> hem <span className="text-slate-300">Doviz Alacak</span> alanina secin.
+                        Isaret, TL tarafinda borc/alacak calismasina gore otomatik belirlenir.
+                    </p>
                 </div>
 
                 <div className="overflow-auto border border-slate-700 rounded-lg max-h-[400px]">

@@ -22,7 +22,7 @@ export default function AppShell({ children, activeTab, onTabChange, version }: 
                 isCollapsed={isSidebarCollapsed}
                 onCollapse={setIsSidebarCollapsed}
             />
-            <Header />
+            <Header isSidebarCollapsed={isSidebarCollapsed} />
 
             <main
                 className={cn(

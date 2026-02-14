@@ -1,8 +1,13 @@
 import { useState, useRef, useEffect } from 'react';
 import { Search, Bell, ChevronDown, User, Monitor, Plus, Check } from 'lucide-react';
 import { useCompany } from '../../context/CompanyContext';
+import { cn } from '../common/Button';
 
-export default function Header() {
+interface HeaderProps {
+    isSidebarCollapsed: boolean;
+}
+
+export default function Header({ isSidebarCollapsed }: HeaderProps) {
     const { companies, activeCompany, selectCompany, createCompany } = useCompany();
     const [isCompanyMenuOpen, setIsCompanyMenuOpen] = useState(false);
     const [isCreating, setIsCreating] = useState(false);
@@ -23,14 +28,25 @@ export default function Header() {
 
     const handleCreateCompany = async () => {
         if (!newCompanyName.trim()) return;
-        await createCompany(newCompanyName);
-        setNewCompanyName('');
-        setIsCreating(false);
-        setIsCompanyMenuOpen(false);
+        try {
+            await createCompany(newCompanyName);
+            setNewCompanyName('');
+            setIsCreating(false);
+            setIsCompanyMenuOpen(false);
+        } catch (error) {
+            console.error('Firma olusturulamadi:', error);
+            const message = error instanceof Error ? error.message : 'Firma olusturulurken bir hata olustu.';
+            alert(message);
+        }
     };
 
     return (
-        <header className="fixed top-0 left-[var(--sidebar-width)] right-0 h-[var(--header-height)] bg-[var(--bg-dark)]/90 backdrop-blur-md border-b border-[var(--border-color)] flex items-center justify-between px-8 z-40 transition-all duration-300">
+        <header
+            className={cn(
+                "fixed top-0 right-0 h-[var(--header-height)] bg-[var(--bg-dark)]/90 backdrop-blur-md border-b border-[var(--border-color)] flex items-center justify-between px-8 z-40 transition-all duration-300",
+                isSidebarCollapsed ? "left-[80px]" : "left-[var(--sidebar-width)]"
+            )}
+        >
 
             {/* Left: Company Selector */}
             <div className="relative" ref={menuRef}>

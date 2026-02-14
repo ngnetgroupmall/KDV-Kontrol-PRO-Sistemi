@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { storageService, type Workspace } from '../services/storageService';
 import { Trash2, FolderOpen, Plus } from 'lucide-react';
 import { formatDate } from '../../../utils/parsers';
@@ -13,21 +13,20 @@ export default function WorkspaceList({ onSelect, onCreateNew }: WorkspaceListPr
     const [newCompanyName, setNewCompanyName] = useState('');
     const [isCreating, setIsCreating] = useState(false);
 
-    useEffect(() => {
-        loadWorkspaces();
+    const loadWorkspaces = useCallback(async () => {
+        const list = await storageService.getAllWorkspaces();
+        setWorkspaces([...list].sort((a, b) => b.lastUpdated.getTime() - a.lastUpdated.getTime()));
     }, []);
 
-    const loadWorkspaces = async () => {
-        const list = await storageService.getAllWorkspaces();
-        // Sort by date desc
-        setWorkspaces(list.sort((a, b) => b.lastUpdated.getTime() - a.lastUpdated.getTime()));
-    };
+    useEffect(() => {
+        void loadWorkspaces();
+    }, [loadWorkspaces]);
 
     const handleDelete = async (e: React.MouseEvent, id: string) => {
         e.stopPropagation();
         if (confirm('Bu çalışmayı silmek istediğinizden emin misiniz?')) {
             await storageService.deleteWorkspace(id);
-            loadWorkspaces();
+            await loadWorkspaces();
         }
     };
 

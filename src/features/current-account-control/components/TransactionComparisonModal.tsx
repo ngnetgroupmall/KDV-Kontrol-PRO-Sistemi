@@ -29,6 +29,54 @@ const formatAmount = (value: number): string => {
     }).format(value);
 };
 
+const formatFxAmount = (value: number | undefined): string => {
+    if (typeof value !== 'number') return '';
+    return new Intl.NumberFormat('tr-TR', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 4,
+    }).format(value);
+};
+
+const getFxMovement = (
+    fxDebit: number | undefined,
+    fxCredit: number | undefined
+): number => {
+    const debit = typeof fxDebit === 'number' ? fxDebit : 0;
+    const credit = typeof fxCredit === 'number' ? fxCredit : 0;
+    return debit - credit;
+};
+
+const formatSignedFxMovement = (
+    fxDebit: number | undefined,
+    fxCredit: number | undefined
+): string => {
+    const movement = getFxMovement(fxDebit, fxCredit);
+    if (Math.abs(movement) < 0.0001) return '';
+
+    const sign = movement > 0 ? '+' : '-';
+    return `${sign}${formatFxAmount(Math.abs(movement))}`;
+};
+
+const isTlCurrencyCode = (currencyCode: string | undefined): boolean => {
+    const normalized = String(currencyCode || '').trim().toLocaleUpperCase('tr-TR');
+    if (!normalized) return false;
+    return normalized === 'TL' || normalized.includes('TRY');
+};
+
+const hasForexContent = (
+    currencyCode: string | undefined,
+    exchangeRate: number | undefined,
+    fxDebit: number | undefined,
+    fxCredit: number | undefined,
+    fxBalance: number | undefined
+): boolean => {
+    if (Math.abs(getFxMovement(fxDebit, fxCredit)) >= 0.0001) return true;
+    if (typeof fxBalance === 'number' && Math.abs(fxBalance) >= 0.0001) return true;
+    if (currencyCode && !isTlCurrencyCode(currencyCode)) return true;
+    if (typeof exchangeRate === 'number' && Math.abs(exchangeRate - 1) >= 0.0001 && !isTlCurrencyCode(currencyCode)) return true;
+    return false;
+};
+
 const formatDateLabel = (value: string): string => {
     if (!value || value === 'TARIHSIZ') return 'Tarihsiz';
     const parsed = new Date(value);
@@ -71,6 +119,11 @@ export default function TransactionComparisonModal({
         debit: number;
         credit: number;
         voucherNo: string;
+        currencyCode?: string;
+        exchangeRate?: number;
+        fxDebit?: number;
+        fxCredit?: number;
+        fxBalance?: number;
     }
 
     const { activeCompany } = useCompany();
@@ -107,12 +160,7 @@ export default function TransactionComparisonModal({
             document.body.style.overflowY = originalOverflowY;
             window.scrollTo(0, scrollY);
         };
-    }, [onClose, result.id]);
-
-    useEffect(() => {
-        setDraftNotes({});
-        setSelectedVoucherNo(null);
-    }, [result.id]);
+    }, [onClose]);
 
     const smmmAllRows = (result.smmmAccount?.transactions || []).map((tx) => ({
         date: toDateKey(tx.date),
@@ -121,6 +169,11 @@ export default function TransactionComparisonModal({
         balance: typeof tx.balance === 'number' ? tx.balance : undefined,
         description: String(tx.description || '').trim(),
         voucherNo: String(tx.voucherNo || '').trim() || undefined,
+        currencyCode: String(tx.currencyCode || '').trim() || undefined,
+        exchangeRate: typeof tx.exchangeRate === 'number' ? tx.exchangeRate : undefined,
+        fxDebit: typeof tx.fxDebit === 'number' ? tx.fxDebit : undefined,
+        fxCredit: typeof tx.fxCredit === 'number' ? tx.fxCredit : undefined,
+        fxBalance: typeof tx.fxBalance === 'number' ? tx.fxBalance : undefined,
     }));
 
     const firmaAllRows = (result.firmaAccount?.transactions || []).map((tx) => ({
@@ -130,11 +183,14 @@ export default function TransactionComparisonModal({
         balance: typeof tx.balance === 'number' ? tx.balance : undefined,
         description: String(tx.description || '').trim(),
         voucherNo: String(tx.voucherNo || '').trim() || undefined,
+        currencyCode: String(tx.currencyCode || '').trim() || undefined,
+        exchangeRate: typeof tx.exchangeRate === 'number' ? tx.exchangeRate : undefined,
+        fxDebit: typeof tx.fxDebit === 'number' ? tx.fxDebit : undefined,
+        fxCredit: typeof tx.fxCredit === 'number' ? tx.fxCredit : undefined,
+        fxBalance: typeof tx.fxBalance === 'number' ? tx.fxBalance : undefined,
     }));
 
-    const accountScopeKey = useMemo(() => {
-        return getAccountScopeKey(result);
-    }, [result.firmaAccount?.code, result.smmmAccount?.code]);
+    const accountScopeKey = getAccountScopeKey(result);
 
     const voucherLedgerIndex = useMemo(() => {
         const index = new Map<string, VoucherLedgerLine[]>();
@@ -163,6 +219,11 @@ export default function TransactionComparisonModal({
                         debit: transaction.debit,
                         credit: transaction.credit,
                         voucherNo: rawVoucherNo,
+                        currencyCode: String(transaction.currencyCode || '').trim() || undefined,
+                        exchangeRate: typeof transaction.exchangeRate === 'number' ? transaction.exchangeRate : undefined,
+                        fxDebit: typeof transaction.fxDebit === 'number' ? transaction.fxDebit : undefined,
+                        fxCredit: typeof transaction.fxCredit === 'number' ? transaction.fxCredit : undefined,
+                        fxBalance: typeof transaction.fxBalance === 'number' ? transaction.fxBalance : undefined,
                     });
                     index.set(voucherKey, existing);
                 });
@@ -282,15 +343,8 @@ export default function TransactionComparisonModal({
         await onBulkRowReviewChange(patches);
     };
 
-    const smmmSplit = useMemo(
-        () => splitRowsByReview(result.unmatchedSmmmTransactions, 'SMMM'),
-        [result.unmatchedSmmmTransactions, rowReviews, accountScopeKey]
-    );
-
-    const firmaSplit = useMemo(
-        () => splitRowsByReview(result.unmatchedFirmaTransactions, 'FIRMA'),
-        [result.unmatchedFirmaTransactions, rowReviews, accountScopeKey]
-    );
+    const smmmSplit = splitRowsByReview(result.unmatchedSmmmTransactions, 'SMMM');
+    const firmaSplit = splitRowsByReview(result.unmatchedFirmaTransactions, 'FIRMA');
 
     const openVoucherLedger = (voucherNo: string | undefined) => {
         const clean = String(voucherNo || '').trim();
@@ -315,10 +369,25 @@ export default function TransactionComparisonModal({
         );
     };
 
+    const getRowErrorLabel = (
+        row: ComparableTransaction,
+        mode: 'MOVEMENT' | 'REVIEWABLE'
+    ): string => {
+        if (!row.date || row.date === 'TARIHSIZ') return 'Tarih yok';
+        if (row.debit > 0 && row.credit > 0) return 'Borc/Alacak birlikte';
+        if (row.debit === 0 && row.credit === 0) return 'Tutar yok';
+        if (mode === 'REVIEWABLE') return 'Eslesmedi';
+        return '';
+    };
+
     const renderMovementTable = (rows: ComparableTransaction[]) => {
         if (!rows.length) {
             return <div className="text-sm text-slate-500 p-4 text-center">Kayit bulunamadi.</div>;
         }
+
+        const showForexColumns = rows.some((row) => (
+            hasForexContent(row.currencyCode, row.exchangeRate, row.fxDebit, row.fxCredit, row.fxBalance)
+        ));
 
         return (
             <div className="overflow-auto max-h-[290px] border border-slate-700 rounded-lg">
@@ -330,11 +399,28 @@ export default function TransactionComparisonModal({
                             <th className="text-right p-2 text-slate-400 uppercase">Borc</th>
                             <th className="text-right p-2 text-slate-400 uppercase">Alacak</th>
                             <th className="text-right p-2 text-slate-400 uppercase">Bakiye</th>
+                            {showForexColumns && (
+                                <>
+                                    <th className="text-left p-2 text-slate-400 uppercase">Dvz</th>
+                                    <th className="text-right p-2 text-slate-400 uppercase">Kur</th>
+                                    <th className="text-right p-2 text-slate-400 uppercase">Dvz Hareket</th>
+                                    <th className="text-right p-2 text-slate-400 uppercase">Dvz Bakiye</th>
+                                </>
+                            )}
                             <th className="text-left p-2 text-slate-400 uppercase">Aciklama</th>
+                            <th className="text-left p-2 text-slate-400 uppercase">Hata</th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-800">
                         {rows.map((row, index) => {
+                            const showForexRow = hasForexContent(
+                                row.currencyCode,
+                                row.exchangeRate,
+                                row.fxDebit,
+                                row.fxCredit,
+                                row.fxBalance
+                            );
+                            const errorLabel = getRowErrorLabel(row, 'MOVEMENT');
                             return (
                                 <tr
                                     key={`${row.date}-${row.debit}-${row.credit}-${row.description || ''}-${index}`}
@@ -347,7 +433,16 @@ export default function TransactionComparisonModal({
                                     <td className="p-2 text-right text-slate-300 font-mono whitespace-nowrap">
                                         {typeof row.balance === 'number' ? formatAmount(row.balance) : '-'}
                                     </td>
+                                    {showForexColumns && (
+                                        <>
+                                            <td className="p-2 text-slate-300 whitespace-nowrap">{showForexRow ? (row.currencyCode || '') : ''}</td>
+                                            <td className="p-2 text-right text-slate-300 font-mono whitespace-nowrap">{showForexRow ? formatFxAmount(row.exchangeRate) : ''}</td>
+                                            <td className="p-2 text-right text-slate-300 font-mono whitespace-nowrap">{showForexRow ? formatSignedFxMovement(row.fxDebit, row.fxCredit) : ''}</td>
+                                            <td className="p-2 text-right text-slate-300 font-mono whitespace-nowrap">{showForexRow ? formatFxAmount(row.fxBalance) : ''}</td>
+                                        </>
+                                    )}
                                     <td className="p-2 text-slate-300">{row.description || '-'}</td>
+                                    <td className="p-2 text-[11px] text-amber-300 whitespace-nowrap">{errorLabel}</td>
                                 </tr>
                             );
                         })}
@@ -362,6 +457,10 @@ export default function TransactionComparisonModal({
             return <div className="text-sm text-slate-500 p-4 text-center">Kayit bulunamadi.</div>;
         }
 
+        const showForexColumns = rows.some(({ row }) => (
+            hasForexContent(row.currencyCode, row.exchangeRate, row.fxDebit, row.fxCredit, row.fxBalance)
+        ));
+
         return (
             <div className="overflow-auto max-h-[290px] border border-slate-700 rounded-lg">
                 <table className="w-full text-xs">
@@ -372,7 +471,16 @@ export default function TransactionComparisonModal({
                             <th className="text-right p-2 text-slate-400 uppercase">Borc</th>
                             <th className="text-right p-2 text-slate-400 uppercase">Alacak</th>
                             <th className="text-right p-2 text-slate-400 uppercase">Bakiye</th>
+                            {showForexColumns && (
+                                <>
+                                    <th className="text-left p-2 text-slate-400 uppercase">Dvz</th>
+                                    <th className="text-right p-2 text-slate-400 uppercase">Kur</th>
+                                    <th className="text-right p-2 text-slate-400 uppercase">Dvz Hareket</th>
+                                    <th className="text-right p-2 text-slate-400 uppercase">Dvz Bakiye</th>
+                                </>
+                            )}
                             <th className="text-left p-2 text-slate-400 uppercase">Aciklama</th>
+                            <th className="text-left p-2 text-slate-400 uppercase">Hata</th>
                             <th className="text-left p-2 text-slate-400 uppercase">Durum</th>
                             <th className="text-left p-2 text-slate-400 uppercase min-w-[320px]">Not</th>
                         </tr>
@@ -383,6 +491,14 @@ export default function TransactionComparisonModal({
                             const review = rowReviews[reviewKey];
                             const isCorrected = !!review?.corrected;
                             const noteValue = getEffectiveNote(reviewKey);
+                            const showForexRow = hasForexContent(
+                                row.currencyCode,
+                                row.exchangeRate,
+                                row.fxDebit,
+                                row.fxCredit,
+                                row.fxBalance
+                            );
+                            const errorLabel = getRowErrorLabel(row, 'REVIEWABLE');
 
                             return (
                                 <tr
@@ -396,7 +512,16 @@ export default function TransactionComparisonModal({
                                     <td className="p-2 text-right text-slate-300 font-mono whitespace-nowrap">
                                         {typeof row.balance === 'number' ? formatAmount(row.balance) : '-'}
                                     </td>
+                                    {showForexColumns && (
+                                        <>
+                                            <td className="p-2 text-slate-300 whitespace-nowrap">{showForexRow ? (row.currencyCode || '') : ''}</td>
+                                            <td className="p-2 text-right text-slate-300 font-mono whitespace-nowrap">{showForexRow ? formatFxAmount(row.exchangeRate) : ''}</td>
+                                            <td className="p-2 text-right text-slate-300 font-mono whitespace-nowrap">{showForexRow ? formatSignedFxMovement(row.fxDebit, row.fxCredit) : ''}</td>
+                                            <td className="p-2 text-right text-slate-300 font-mono whitespace-nowrap">{showForexRow ? formatFxAmount(row.fxBalance) : ''}</td>
+                                        </>
+                                    )}
                                     <td className="p-2 text-slate-300">{row.description || '-'}</td>
+                                    <td className="p-2 text-[11px] text-amber-300 whitespace-nowrap">{errorLabel}</td>
                                     <td className="p-2">
                                         <button
                                             onClick={() => toggleCorrected(reviewKey)}
@@ -436,11 +561,11 @@ export default function TransactionComparisonModal({
     return (
         createPortal(
             <div
-                className="fixed inset-0 z-[9999] bg-black/75 backdrop-blur-sm p-1 md:p-2 flex items-start justify-center"
+                className="fixed inset-0 z-[9999] bg-black/75 backdrop-blur-sm p-0 flex items-stretch justify-stretch"
                 onClick={onClose}
             >
                 <div
-                    className="w-[99vw] h-[98vh] max-w-none bg-slate-900 border border-slate-700 rounded-xl overflow-hidden flex flex-col shadow-2xl"
+                    className="w-screen h-screen max-w-none bg-slate-900 overflow-hidden flex flex-col shadow-2xl"
                     onClick={(e) => e.stopPropagation()}
                 >
                 <div className="p-5 border-b border-slate-700 flex items-start justify-between gap-4">
@@ -535,10 +660,23 @@ export default function TransactionComparisonModal({
                                                     <th className="text-left p-2 text-slate-400 uppercase">Aciklama</th>
                                                     <th className="text-right p-2 text-slate-400 uppercase">Borc</th>
                                                     <th className="text-right p-2 text-slate-400 uppercase">Alacak</th>
+                                                    <th className="text-left p-2 text-slate-400 uppercase">Dvz</th>
+                                                    <th className="text-right p-2 text-slate-400 uppercase">Kur</th>
+                                                    <th className="text-right p-2 text-slate-400 uppercase">Dvz Hareket</th>
+                                                    <th className="text-right p-2 text-slate-400 uppercase">Dvz Bakiye</th>
                                                 </tr>
                                             </thead>
                                             <tbody className="divide-y divide-slate-800">
-                                                {selectedVoucherLines.map((line, index) => (
+                                                {selectedVoucherLines.map((line, index) => {
+                                                    const showForexRow = hasForexContent(
+                                                        line.currencyCode,
+                                                        line.exchangeRate,
+                                                        line.fxDebit,
+                                                        line.fxCredit,
+                                                        line.fxBalance
+                                                    );
+
+                                                    return (
                                                     <tr key={`${line.accountCode}-${line.description}-${index}`} className="hover:bg-slate-800/30">
                                                         <td className="p-2 text-slate-300 whitespace-nowrap">
                                                             {line.date ? line.date.toLocaleDateString('tr-TR') : '-'}
@@ -549,8 +687,13 @@ export default function TransactionComparisonModal({
                                                         <td className="p-2 text-slate-300">{line.description || '-'}</td>
                                                         <td className="p-2 text-right text-slate-300 font-mono whitespace-nowrap">{formatAmount(line.debit)}</td>
                                                         <td className="p-2 text-right text-slate-300 font-mono whitespace-nowrap">{formatAmount(line.credit)}</td>
+                                                        <td className="p-2 text-slate-300 whitespace-nowrap">{showForexRow ? (line.currencyCode || '') : ''}</td>
+                                                        <td className="p-2 text-right text-slate-300 font-mono whitespace-nowrap">{showForexRow ? formatFxAmount(line.exchangeRate) : ''}</td>
+                                                        <td className="p-2 text-right text-slate-300 font-mono whitespace-nowrap">{showForexRow ? formatSignedFxMovement(line.fxDebit, line.fxCredit) : ''}</td>
+                                                        <td className="p-2 text-right text-slate-300 font-mono whitespace-nowrap">{showForexRow ? formatFxAmount(line.fxBalance) : ''}</td>
                                                     </tr>
-                                                ))}
+                                                );
+                                                })}
                                             </tbody>
                                         </table>
                                     </div>

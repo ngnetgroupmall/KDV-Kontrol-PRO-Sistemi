@@ -9,6 +9,11 @@ export interface ComparableTransaction {
     balance?: number;
     description?: string;
     voucherNo?: string;
+    currencyCode?: string;
+    exchangeRate?: number;
+    fxDebit?: number;
+    fxCredit?: number;
+    fxBalance?: number;
 }
 
 export interface TransactionDiffRow {

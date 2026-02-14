@@ -1,4 +1,4 @@
-import { LayoutDashboard, Upload, LifeBuoy, Settings, ChevronLeft, ChevronRight, ShoppingCart, PieChart, FileSpreadsheet } from 'lucide-react';
+import { LayoutDashboard, Upload, LifeBuoy, Settings, ChevronLeft, ChevronRight, ShoppingCart, PieChart, FileSpreadsheet, Database, Scale, Calculator } from 'lucide-react';
 import { cn } from '../common/Button';
 import logo from '../../assets/logo.png';
 
@@ -12,10 +12,13 @@ interface SidebarProps {
 
 export default function Sidebar({ activeTab, onTabChange, version, isCollapsed, onCollapse }: SidebarProps) {
     const menuItems = [
-        { id: 'dashboard', label: 'Genel Bakış', icon: LayoutDashboard },
-        { id: 'sales', label: 'Satış Kontrol', icon: Upload },
-        { id: 'purchase', label: 'Alış Kontrol', icon: ShoppingCart },
+        { id: 'dashboard', label: 'Genel Bakis', icon: LayoutDashboard },
+        { id: 'data-upload', label: 'Veri Yukleme', icon: Database },
+        { id: 'sales', label: 'Satis Kontrol', icon: Upload },
+        { id: 'purchase', label: 'Alis Kontrol', icon: ShoppingCart },
         { id: 'kebir', label: 'Kebir Analizi', icon: PieChart },
+        { id: 'mizan', label: 'Mizan', icon: Scale },
+        { id: 'temporary-tax', label: 'Gecici Vergi', icon: Calculator },
         { id: 'current-account', label: 'Cari Hesap Kontrol', icon: FileSpreadsheet },
     ];
 
@@ -31,7 +34,6 @@ export default function Sidebar({ activeTab, onTabChange, version, isCollapsed, 
                 isCollapsed ? "w-[80px]" : "w-[var(--sidebar-width)]"
             )}
         >
-            {/* Brand */}
             <div className="h-[var(--header-height)] flex items-center px-4 md:px-6 border-b border-[var(--border-color)] overflow-hidden">
                 <div className="flex items-center gap-3 min-w-max">
                     <img src={logo} alt="Logo" className="w-10 h-10 object-contain rounded-lg shadow-lg shadow-blue-600/10" />
@@ -42,9 +44,8 @@ export default function Sidebar({ activeTab, onTabChange, version, isCollapsed, 
                 </div>
             </div>
 
-            {/* Menu */}
             <div className="flex-1 py-6 flex flex-col gap-1 overflow-y-auto overflow-x-hidden">
-                {!isCollapsed && <p className="px-6 text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 animate-fade-in">Ana Menü</p>}
+                {!isCollapsed && <p className="px-6 text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 animate-fade-in">Ana Menu</p>}
 
                 {menuItems.map((item) => (
                     <button
@@ -89,7 +90,6 @@ export default function Sidebar({ activeTab, onTabChange, version, isCollapsed, 
                 ))}
             </div>
 
-            {/* Collapse Button */}
             <button
                 onClick={() => onCollapse(!isCollapsed)}
                 className="absolute -right-3 top-20 bg-blue-600 text-white rounded-full p-1 shadow-lg hover:bg-blue-500 transition-colors z-[60]"
@@ -97,12 +97,11 @@ export default function Sidebar({ activeTab, onTabChange, version, isCollapsed, 
                 {isCollapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
             </button>
 
-            {/* Footer */}
             <div className={cn("p-4 m-4 rounded-xl bg-slate-900/50 border border-[var(--border-color)] overflow-hidden transition-all duration-300", isCollapsed ? "p-2 m-2" : "")}>
                 <div className={cn("flex items-center gap-3", isCollapsed ? "justify-center" : "")}>
                     <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
                     <div className={cn("transition-opacity duration-300", isCollapsed ? "hidden" : "block")}>
-                        <p className="text-xs font-bold text-slate-300 whitespace-nowrap">Sistem Çevrimiçi</p>
+                        <p className="text-xs font-bold text-slate-300 whitespace-nowrap">Sistem Cevrimici</p>
                         <p className="text-[10px] text-slate-500 font-mono mt-0.5">v{version}</p>
                     </div>
                 </div>

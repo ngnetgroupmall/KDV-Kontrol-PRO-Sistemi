@@ -8,7 +8,7 @@ import type {
     TransactionDiffRow,
 } from './types';
 
-const TARGET_PREFIXES = new Set(['120', '320', '159', '340', '336']);
+const TARGET_PREFIXES = new Set(['120', '320', '159', '329', '340', '336']);
 const NAME_MATCH_THRESHOLD = 0.62;
 const TOLERANCE = 0.01;
 
@@ -112,6 +112,11 @@ const toComparableTransaction = (transaction: Transaction): ComparableTransactio
     balance: typeof transaction.balance === 'number' ? round2(transaction.balance) : undefined,
     description: String(transaction.description || '').trim(),
     voucherNo: String(transaction.voucherNo || '').trim() || undefined,
+    currencyCode: String(transaction.currencyCode || '').trim() || undefined,
+    exchangeRate: typeof transaction.exchangeRate === 'number' ? transaction.exchangeRate : undefined,
+    fxDebit: typeof transaction.fxDebit === 'number' ? transaction.fxDebit : undefined,
+    fxCredit: typeof transaction.fxCredit === 'number' ? transaction.fxCredit : undefined,
+    fxBalance: typeof transaction.fxBalance === 'number' ? transaction.fxBalance : undefined,
 });
 
 const getTransactionKey = (transaction: ComparableTransaction): string => {
@@ -127,6 +132,11 @@ const parseTransactionKey = (key: string): ComparableTransaction => {
         balance: undefined,
         description: '',
         voucherNo: undefined,
+        currencyCode: undefined,
+        exchangeRate: undefined,
+        fxDebit: undefined,
+        fxCredit: undefined,
+        fxBalance: undefined,
     };
 };
 

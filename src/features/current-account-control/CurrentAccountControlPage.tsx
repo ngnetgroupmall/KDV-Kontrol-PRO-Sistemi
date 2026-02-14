@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Layers } from 'lucide-react';
 import { useCompany } from '../../context/CompanyContext';
-import type { AccountDetail, MappingConfig } from '../common/types';
+import type { AccountDetail, CurrentAccountParseSummary, MappingConfig } from '../common/types';
 import type { ComparisonResult, TransactionReviewMap } from './utils/types';
 import DualFileUpload from './components/DualFileUpload';
 import ColumnMapper from './components/ColumnMapper';
@@ -9,7 +9,7 @@ import ComparisonView from './components/ComparisonView';
 import { runComparison } from './utils/matchingService';
 
 export default function CurrentAccountControlPage() {
-    const { activeCompany, updateCompany } = useCompany();
+    const { activeCompany, patchActiveCompany, activeUploads, setActiveUploads } = useCompany();
 
     const [smmmFile, setSmmmFile] = useState<File | null>(null);
     const [firmaFile, setFirmaFile] = useState<File | null>(null);
@@ -21,10 +21,14 @@ export default function CurrentAccountControlPage() {
     const [comparisonResults, setComparisonResults] = useState<ComparisonResult[]>([]);
     const [manualMatches, setManualMatches] = useState<Record<string, string>>({});
     const [rowReviews, setRowReviews] = useState<TransactionReviewMap>({});
+    const [dataQuality, setDataQuality] = useState<{
+        smmm?: CurrentAccountParseSummary;
+        firma?: CurrentAccountParseSummary;
+    }>({});
 
     useEffect(() => {
-        setSmmmFile(null);
-        setFirmaFile(null);
+        setSmmmFile(activeUploads.currentAccount.smmmFile);
+        setFirmaFile(activeUploads.currentAccount.firmaFile);
         setMappingMode('NONE');
         setComparisonResults([]);
 
@@ -33,13 +37,16 @@ export default function CurrentAccountControlPage() {
             setLocalFirmaData(activeCompany.currentAccount.firmaData || []);
             setManualMatches(activeCompany.currentAccount.manualMatches || {});
             setRowReviews(activeCompany.currentAccount.rowReviews || {});
+            setDataQuality(activeCompany.currentAccount.dataQuality || {});
         } else {
             setLocalSmmmData([]);
             setLocalFirmaData([]);
             setManualMatches({});
             setRowReviews({});
+            setDataQuality({});
         }
-    }, [activeCompany?.id]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [activeCompany?.id, activeUploads.currentAccount.smmmFile, activeUploads.currentAccount.firmaFile]);
 
     const smmmData = useMemo(
         () => (localSmmmData.length > 0 ? localSmmmData : activeCompany?.currentAccount?.smmmData || []),
@@ -54,45 +61,69 @@ export default function CurrentAccountControlPage() {
     const hasSmmm = smmmData.length > 0;
     const hasFirma = firmaData.length > 0;
 
+    const setSharedSmmmFile = (file: File | null) => {
+        setSmmmFile(file);
+        setActiveUploads((current) => ({
+            ...current,
+            currentAccount: {
+                ...current.currentAccount,
+                smmmFile: file,
+            },
+        }));
+    };
+
+    const setSharedFirmaFile = (file: File | null) => {
+        setFirmaFile(file);
+        setActiveUploads((current) => ({
+            ...current,
+            currentAccount: {
+                ...current.currentAccount,
+                firmaFile: file,
+            },
+        }));
+    };
+
     const persistManualMatches = async (nextManualMatches: Record<string, string>) => {
         if (!activeCompany) return;
 
-        const currentData = activeCompany.currentAccount || {
-            smmmData: [] as AccountDetail[],
-            firmaData: [] as AccountDetail[],
-            smmmFullData: [] as AccountDetail[],
-            firmaFullData: [] as AccountDetail[],
-            mappings: {} as MappingConfig,
-            rowReviews: {} as TransactionReviewMap,
-        };
+        await patchActiveCompany((company) => {
+            const currentData = company.currentAccount || {
+                smmmData: [] as AccountDetail[],
+                firmaData: [] as AccountDetail[],
+                smmmFullData: [] as AccountDetail[],
+                firmaFullData: [] as AccountDetail[],
+                mappings: {} as MappingConfig,
+                rowReviews: {} as TransactionReviewMap,
+            };
 
-        await updateCompany({
-            ...activeCompany,
-            currentAccount: {
-                ...currentData,
-                manualMatches: nextManualMatches,
-            },
+            return {
+                currentAccount: {
+                    ...currentData,
+                    manualMatches: nextManualMatches,
+                },
+            };
         });
     };
 
     const persistRowReviews = async (nextRowReviews: TransactionReviewMap) => {
         if (!activeCompany) return;
 
-        const currentData = activeCompany.currentAccount || {
-            smmmData: [] as AccountDetail[],
-            firmaData: [] as AccountDetail[],
-            smmmFullData: [] as AccountDetail[],
-            firmaFullData: [] as AccountDetail[],
-            mappings: {} as MappingConfig,
-            manualMatches: {} as Record<string, string>,
-        };
+        await patchActiveCompany((company) => {
+            const currentData = company.currentAccount || {
+                smmmData: [] as AccountDetail[],
+                firmaData: [] as AccountDetail[],
+                smmmFullData: [] as AccountDetail[],
+                firmaFullData: [] as AccountDetail[],
+                mappings: {} as MappingConfig,
+                manualMatches: {} as Record<string, string>,
+            };
 
-        await updateCompany({
-            ...activeCompany,
-            currentAccount: {
-                ...currentData,
-                rowReviews: nextRowReviews,
-            },
+            return {
+                currentAccount: {
+                    ...currentData,
+                    rowReviews: nextRowReviews,
+                },
+            };
         });
     };
 
@@ -101,58 +132,87 @@ export default function CurrentAccountControlPage() {
 
         setIsProcessing(true);
         try {
-            const { parseExcelData } = await import('./utils/excelParser');
-            const currentData = activeCompany.currentAccount || {
-                smmmData: [] as AccountDetail[],
-                firmaData: [] as AccountDetail[],
-                smmmFullData: [] as AccountDetail[],
-                firmaFullData: [] as AccountDetail[],
-                mappings: {} as MappingConfig,
-                manualMatches: {} as Record<string, string>,
-                rowReviews: {} as TransactionReviewMap,
-            };
-
-            let updatedCompany = { ...activeCompany };
+            const { parseExcelData, parseExcelDataDetailed } = await import('./utils/excelParser');
+            let nextSmmmData: AccountDetail[] | null = null;
+            let nextSmmmFullData: AccountDetail[] | null = null;
+            let nextSmmmSummary: CurrentAccountParseSummary | null = null;
+            let nextFirmaData: AccountDetail[] | null = null;
+            let nextFirmaFullData: AccountDetail[] | null = null;
+            let nextFirmaSummary: CurrentAccountParseSummary | null = null;
 
             if (mappingMode === 'SMMM' && smmmFile) {
-                const parsed = await parseExcelData(smmmFile, mapping);
-                const parsedFull = await parseExcelData(smmmFile, mapping, { includeAllAccounts: true });
-                setLocalSmmmData(parsed);
+                const parsedDetailed = await parseExcelDataDetailed(smmmFile, mapping, {
+                    includeForexOnlyMovement: true,
+                });
+                const parsedFull = await parseExcelData(smmmFile, mapping, {
+                    includeAllAccounts: true,
+                    includeForexOnlyMovement: true,
+                });
+                setLocalSmmmData(parsedDetailed.accounts);
                 setComparisonResults([]);
                 setRowReviews({});
-
-                updatedCompany = {
-                    ...activeCompany,
-                    currentAccount: {
-                        ...currentData,
-                        smmmData: parsed,
-                        smmmFullData: parsedFull,
-                        mappings: { ...currentData.mappings, smmm: mapping },
-                        rowReviews: {},
-                    },
-                };
+                setDataQuality((prev) => ({
+                    ...prev,
+                    smmm: parsedDetailed.summary,
+                }));
+                nextSmmmData = parsedDetailed.accounts;
+                nextSmmmFullData = parsedFull;
+                nextSmmmSummary = parsedDetailed.summary;
             }
 
             if (mappingMode === 'FIRMA' && firmaFile) {
-                const parsed = await parseExcelData(firmaFile, mapping);
-                const parsedFull = await parseExcelData(firmaFile, mapping, { includeAllAccounts: true });
-                setLocalFirmaData(parsed);
+                const parsedDetailed = await parseExcelDataDetailed(firmaFile, mapping, {
+                    includeForexOnlyMovement: true,
+                });
+                const parsedFull = await parseExcelData(firmaFile, mapping, {
+                    includeAllAccounts: true,
+                    includeForexOnlyMovement: true,
+                });
+                setLocalFirmaData(parsedDetailed.accounts);
                 setComparisonResults([]);
                 setRowReviews({});
-
-                updatedCompany = {
-                    ...activeCompany,
-                    currentAccount: {
-                        ...currentData,
-                        firmaData: parsed,
-                        firmaFullData: parsedFull,
-                        mappings: { ...currentData.mappings, firma: mapping },
-                        rowReviews: {},
-                    },
-                };
+                setDataQuality((prev) => ({
+                    ...prev,
+                    firma: parsedDetailed.summary,
+                }));
+                nextFirmaData = parsedDetailed.accounts;
+                nextFirmaFullData = parsedFull;
+                nextFirmaSummary = parsedDetailed.summary;
             }
 
-            await updateCompany(updatedCompany);
+            await patchActiveCompany((company) => {
+                const currentData = company.currentAccount || {
+                    smmmData: [] as AccountDetail[],
+                    firmaData: [] as AccountDetail[],
+                    smmmFullData: [] as AccountDetail[],
+                    firmaFullData: [] as AccountDetail[],
+                    mappings: {} as MappingConfig,
+                    manualMatches: {} as Record<string, string>,
+                    rowReviews: {} as TransactionReviewMap,
+                    dataQuality: {} as { smmm?: CurrentAccountParseSummary; firma?: CurrentAccountParseSummary },
+                };
+
+                return {
+                    currentAccount: {
+                        ...currentData,
+                        smmmData: nextSmmmData ?? currentData.smmmData,
+                        smmmFullData: nextSmmmFullData ?? currentData.smmmFullData,
+                        firmaData: nextFirmaData ?? currentData.firmaData,
+                        firmaFullData: nextFirmaFullData ?? currentData.firmaFullData,
+                        mappings: {
+                            ...currentData.mappings,
+                            ...(nextSmmmData ? { smmm: mapping } : {}),
+                            ...(nextFirmaData ? { firma: mapping } : {}),
+                        },
+                        rowReviews: {},
+                        dataQuality: {
+                            ...(currentData.dataQuality || {}),
+                            ...(nextSmmmSummary ? { smmm: nextSmmmSummary } : {}),
+                            ...(nextFirmaSummary ? { firma: nextFirmaSummary } : {}),
+                        },
+                    },
+                };
+            });
             setMappingMode('NONE');
         } catch (error) {
             console.error('Current account parse error:', error);
@@ -283,14 +343,14 @@ export default function CurrentAccountControlPage() {
                         <DualFileUpload
                             smmmFile={smmmFile}
                             firmaFile={firmaFile}
-                            onSmmmFileSelect={setSmmmFile}
-                            onFirmaFileSelect={setFirmaFile}
-                            onClearSmmm={() => setSmmmFile(null)}
-                            onClearFirma={() => setFirmaFile(null)}
+                            onSmmmFileSelect={setSharedSmmmFile}
+                            onFirmaFileSelect={setSharedFirmaFile}
+                            onClearSmmm={() => setSharedSmmmFile(null)}
+                            onClearFirma={() => setSharedFirmaFile(null)}
                         />
 
                         <div className="mt-3 text-xs text-slate-500 space-y-1">
-                            <p>Sadece 120 / 320 / 159 / 340 / 336 hesaplari degerlendirilir.</p>
+                            <p>Sadece 120 / 320 / 159 / 329 / 340 / 336 hesaplari degerlendirilir.</p>
                             <p>Satir bazli kontrol: Tarih + Borc/Alacak (Evrak No ve Aciklama dikkate alinmaz).</p>
                             <p>Tolerans: 0.01 TL</p>
                         </div>
@@ -329,6 +389,16 @@ export default function CurrentAccountControlPage() {
                             Firma Verilerini Isle
                         </button>
                     </section>
+
+                    {(dataQuality.smmm || dataQuality.firma) && (
+                        <section className="bg-slate-800/50 border border-slate-700/50 rounded-xl p-4">
+                            <h3 className="text-sm font-semibold text-white mb-3">Veri Kalitesi Ozeti</h3>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                <DataQualityCard label="SMMM" summary={dataQuality.smmm} accentClass="text-blue-300" />
+                                <DataQualityCard label="Firma" summary={dataQuality.firma} accentClass="text-purple-300" />
+                            </div>
+                        </section>
+                    )}
                 </div>
             )}
 
@@ -379,6 +449,56 @@ export default function CurrentAccountControlPage() {
                     )}
                 </div>
             )}
+        </div>
+    );
+}
+
+function DataQualityCard({
+    label,
+    summary,
+    accentClass,
+}: {
+    label: string;
+    summary?: CurrentAccountParseSummary;
+    accentClass: string;
+}) {
+    if (!summary) {
+        return (
+            <div className="rounded-lg border border-slate-700 bg-slate-900/40 p-3">
+                <p className={`text-xs font-semibold ${accentClass}`}>{label}</p>
+                <p className="text-xs text-slate-500 mt-2">Henuz ozet olusmadi.</p>
+            </div>
+        );
+    }
+
+    const skippedRows = summary.skippedNoCodeRows + summary.skippedNoNameRows + summary.skippedSummaryRows;
+
+    return (
+        <div className="rounded-lg border border-slate-700 bg-slate-900/40 p-3">
+            <p className={`text-xs font-semibold ${accentClass}`}>{label}</p>
+            <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-xs text-slate-300">
+                <p>
+                    Toplam satir: <span className="text-white font-medium">{summary.totalRows}</span>
+                </p>
+                <p>
+                    Hareket satiri: <span className="text-white font-medium">{summary.transactionRows}</span>
+                </p>
+                <p>
+                    Hesap: <span className="text-white font-medium">{summary.accountCount}</span>
+                </p>
+                <p>
+                    Fis no bulunan: <span className="text-white font-medium">{summary.voucherNoRows}</span>
+                </p>
+                <p>
+                    Prefix disi satir: <span className="text-amber-300 font-medium">{summary.filteredByPrefixRows}</span>
+                </p>
+                <p>
+                    Gecersiz tarih: <span className="text-amber-300 font-medium">{summary.invalidDateRows}</span>
+                </p>
+                <p className="col-span-2">
+                    Atlanan satir (kod/ad/toplam): <span className="text-amber-300 font-medium">{skippedRows}</span>
+                </p>
+            </div>
         </div>
     );
 }

@@ -5,6 +5,12 @@ export interface Transaction {
     credit: number;
     balance?: number;
     voucherNo?: string;
+    documentNo?: string;
+    currencyCode?: string;
+    exchangeRate?: number;
+    fxDebit?: number;
+    fxCredit?: number;
+    fxBalance?: number;
 }
 
 export interface AccountDetail {
@@ -20,6 +26,19 @@ export interface AccountDetail {
 
 export interface MappingConfig {
     [key: string]: Record<string, string>;
+}
+
+export interface CurrentAccountParseSummary {
+    totalRows: number;
+    transactionRows: number;
+    accountCount: number;
+    filteredByPrefixRows: number;
+    skippedNoCodeRows: number;
+    skippedNoNameRows: number;
+    skippedSummaryRows: number;
+    zeroMovementRows: number;
+    invalidDateRows: number;
+    voucherNoRows: number;
 }
 
 
@@ -74,6 +93,11 @@ export interface Company {
         firmaData: AccountDetail[];
         smmmFullData?: AccountDetail[];
         firmaFullData?: AccountDetail[];
+        dataQuality?: {
+            smmm?: CurrentAccountParseSummary;
+            firma?: CurrentAccountParseSummary;
+        };
+        forexAccountOverrides?: Record<string, boolean>;
         mappings: MappingConfig;
         manualMatches?: Record<string, string>;
         rowReviews?: Record<string, { corrected: boolean; note?: string; updatedAt?: string }>;
