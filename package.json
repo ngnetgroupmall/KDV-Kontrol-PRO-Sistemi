@@ -1,7 +1,7 @@
 {
-  "name": "kdv-kontrol",
+  "name": "ng-net-smmm-ai",
   "private": true,
-  "version": "1.6.9",
+  "version": "1.6.17",
   "type": "module",
   "main": "dist-electron/main.js",
   "scripts": {
@@ -13,13 +13,13 @@
     "electron:publish": "npm run build && electron-builder --publish always"
   },
   "build": {
-    "appId": "com.ngnet.kdv-kontrol",
-    "productName": "KDV Kontrol PRO",
+    "appId": "com.ngnet.smmm-ai",
+    "productName": "NG NET SMMM AI",
     "publish": [
       {
         "provider": "github",
         "owner": "ngnetgroupmall",
-        "repo": "KDV-Kontrol-PRO-Sistemi"
+        "repo": "NG-NET-SMMM-AI"
       }
     ],
     "directories": {
@@ -30,6 +30,7 @@
       "dist-electron/**/*"
     ],
     "win": {
+      "icon": "build/icon.ico",
       "target": [
         "nsis"
       ]
@@ -39,8 +40,11 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "KDV Kontrol PRO",
-      "artifactName": "KDV-Kontrol-PRO-Setup-${version}.${ext}"
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "installerHeaderIcon": "build/icon.ico",
+      "shortcutName": "NG NET SMMM AI",
+      "artifactName": "NG-NET-SMMM-AI-Setup-${version}.${ext}"
     }
   },
   "dependencies": {

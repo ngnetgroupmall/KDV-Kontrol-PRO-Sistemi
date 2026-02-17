@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import type { EInvoiceRow, AccountingRow } from '../../../types';
+import type { EInvoiceRow, AccountingRow, AccountingMatrahRow, ReconciliationReportData } from '../../../types';
 import { createDemoData } from '../../../utils/demo';
-import * as XLSX from 'xlsx';
 import { useCompany } from '../../../context/CompanyContext';
 
 export interface UpdateInfo {
@@ -10,7 +9,7 @@ export interface UpdateInfo {
     downloaded: boolean;
 }
 
-type ReconciliationReports = Record<string, unknown>;
+type ReconciliationReports = ReconciliationReportData;
 
 export function useReconciliation() {
     const { activeCompany, patchActiveCompany, activeUploads, setActiveUploads } = useCompany();
@@ -23,7 +22,7 @@ export function useReconciliation() {
     const [currentFileIndex, setCurrentFileIndex] = useState(0);
     const [eInvoiceData, setEInvoiceData] = useState<EInvoiceRow[]>([]);
     const [accountingData, setAccountingData] = useState<AccountingRow[]>([]);
-    const [accountingMatrahData, setAccountingMatrahData] = useState<AccountingRow[]>([]);
+    const [accountingMatrahData, setAccountingMatrahData] = useState<AccountingMatrahRow[]>([]);
     const [tolerance, setTolerance] = useState<number>(0.25);
 
     const [reports, setReports] = useState<ReconciliationReports | null>(null);
@@ -145,32 +144,21 @@ export function useReconciliation() {
         };
     }, []);
 
-    const processEFile = useCallback((mapping: Record<string, string>, headerRowIndex: number, mode: 'SALES' | 'PURCHASE') => {
+    const processEFile = useCallback(async (mapping: Record<string, string>, headerRowIndex: number, mode: 'SALES' | 'PURCHASE') => {
         const currentFile = eFiles[currentFileIndex];
         if (!currentFile) {
             setError('Secili e-fatura dosyasi bulunamadi.');
             return;
         }
 
-        const worker = new Worker(new URL('../../../workers/reconciliation.worker.ts', import.meta.url), { type: 'module' });
         setLoading(true);
-        worker.postMessage({
-            type: 'PARSE_EXCEL',
-            payload: {
-                file: currentFile,
-                mapping,
-                fileType: 'EINVOICE',
-                fileName: currentFile.name,
-                headerRowIndex,
-                mode,
-            },
-        });
+        try {
+            const { processEInvoiceFile } = await import('../services/excelProcessor');
+            const result = await processEInvoiceFile(currentFile, mapping, headerRowIndex, mode);
 
-        worker.onmessage = (event) => {
-            if (event.data.type === 'PARSE_SUCCESS') {
-                const newRows = event.data.payload.rows;
+            if (result.success && result.data) {
                 setEInvoiceData((prev) => {
-                    const updated = [...prev, ...newRows];
+                    const updated = [...prev, ...result.data!];
                     void saveDataToCompany({ eInvoiceData: updated });
                     return updated;
                 });
@@ -181,40 +169,31 @@ export function useReconciliation() {
                     setStep(2);
                     setCurrentFileIndex(0);
                 }
-            } else if (event.data.type === 'PARSE_ERROR') {
-                setError(event.data.payload);
+            } else {
+                setError(result.error || 'Dosya islenirken hata olustu.');
             }
+        } catch (err) {
+            setError('Beklenmeyen bir hata olustu: ' + String(err));
+        } finally {
             setLoading(false);
-            worker.terminate();
-        };
+        }
     }, [eFiles, currentFileIndex, saveDataToCompany]);
 
-    const processAccFile = useCallback((mapping: Record<string, string>, headerRowIndex: number, mode: 'SALES' | 'PURCHASE') => {
+    const processAccFile = useCallback(async (mapping: Record<string, string>, headerRowIndex: number, mode: 'SALES' | 'PURCHASE') => {
         const currentFile = accFiles[currentFileIndex];
         if (!currentFile) {
             setError('Secili muhasebe dosyasi bulunamadi.');
             return;
         }
 
-        const worker = new Worker(new URL('../../../workers/reconciliation.worker.ts', import.meta.url), { type: 'module' });
         setLoading(true);
-        worker.postMessage({
-            type: 'PARSE_EXCEL',
-            payload: {
-                file: currentFile,
-                mapping,
-                fileType: 'ACCOUNTING',
-                fileName: currentFile.name,
-                headerRowIndex,
-                mode,
-            },
-        });
+        try {
+            const { processAccountingFile } = await import('../services/excelProcessor');
+            const result = await processAccountingFile(currentFile, mapping, headerRowIndex, mode);
 
-        worker.onmessage = (event) => {
-            if (event.data.type === 'PARSE_SUCCESS') {
-                const newBatch = event.data.payload.rows;
+            if (result.success && result.data) {
                 setAccountingData((prev) => {
-                    const updated = [...prev, ...newBatch];
+                    const updated = [...prev, ...result.data!];
                     void saveDataToCompany({ accountingData: updated });
                     return updated;
                 });
@@ -229,39 +208,31 @@ export function useReconciliation() {
                     }
                     setCurrentFileIndex(0);
                 }
-            } else if (event.data.type === 'PARSE_ERROR') {
-                setError(event.data.payload);
+            } else {
+                setError(result.error || 'Dosya islenirken hata olustu.');
             }
+        } catch (err) {
+            setError('Beklenmeyen bir hata olustu: ' + String(err));
+        } finally {
             setLoading(false);
-            worker.terminate();
-        };
+        }
     }, [accFiles, currentFileIndex, saveDataToCompany]);
 
-    const processAccMatrahFile = useCallback((mapping: Record<string, string>, headerRowIndex: number) => {
+    const processAccMatrahFile = useCallback(async (mapping: Record<string, string>, headerRowIndex: number) => {
         const currentFile = accMatrahFiles[currentFileIndex];
         if (!currentFile) {
             setError('Secili matrah dosyasi bulunamadi.');
             return;
         }
 
-        const worker = new Worker(new URL('../../../workers/reconciliation.worker.ts', import.meta.url), { type: 'module' });
         setLoading(true);
-        worker.postMessage({
-            type: 'PARSE_EXCEL',
-            payload: {
-                file: currentFile,
-                mapping,
-                fileType: 'ACCOUNTING',
-                fileName: currentFile.name,
-                headerRowIndex,
-            },
-        });
+        try {
+            const { processAccountingMatrahFile } = await import('../services/excelProcessor');
+            const result = await processAccountingMatrahFile(currentFile, mapping, headerRowIndex);
 
-        worker.onmessage = (event) => {
-            if (event.data.type === 'PARSE_SUCCESS') {
-                const newBatch = event.data.payload.rows;
+            if (result.success && result.data) {
                 setAccountingMatrahData((prev) => {
-                    const updated = [...prev, ...newBatch];
+                    const updated = [...prev, ...result.data!];
                     void saveDataToCompany({ accountingMatrahData: updated });
                     return updated;
                 });
@@ -271,12 +242,14 @@ export function useReconciliation() {
                 } else {
                     setStep(5);
                 }
-            } else if (event.data.type === 'PARSE_ERROR') {
-                setError(event.data.payload);
+            } else {
+                setError(result.error || 'Dosya islenirken hata olustu.');
             }
+        } catch (err) {
+            setError('Beklenmeyen bir hata olustu: ' + String(err));
+        } finally {
             setLoading(false);
-            worker.terminate();
-        };
+        }
     }, [accMatrahFiles, currentFileIndex, saveDataToCompany]);
 
     const runReconciliation = useCallback((mode: 'SALES' | 'PURCHASE') => {
@@ -308,19 +281,25 @@ export function useReconciliation() {
         };
     }, [eInvoiceData, accountingData, accountingMatrahData, tolerance, saveDataToCompany]);
 
-    const handleDemoData = (type: 'EINVOICE' | 'ACCOUNTING' | 'ACCOUNTING_MATRAH') => {
-        const data = createDemoData(type === 'ACCOUNTING_MATRAH' ? 'ACCOUNTING' : type);
-        const ws = XLSX.utils.json_to_sheet(data);
-        const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, 'Demo');
-        const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
-        const file = new File([wbout], `${type.toLowerCase()}_demo.xlsx`, {
-            type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        });
+    const handleDemoData = async (type: 'EINVOICE' | 'ACCOUNTING' | 'ACCOUNTING_MATRAH') => {
+        try {
+            const XLSX = await import('xlsx');
+            const data = createDemoData(type === 'ACCOUNTING_MATRAH' ? 'ACCOUNTING' : type);
+            const ws = XLSX.utils.json_to_sheet(data);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, 'Demo');
+            const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+            const file = new File([wbout], `${type.toLowerCase()}_demo.xlsx`, {
+                type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            });
 
-        if (type === 'EINVOICE') setSharedEFiles([file]);
-        else if (type === 'ACCOUNTING') setSharedAccFiles([file]);
-        else setSharedAccMatrahFiles([file]);
+            if (type === 'EINVOICE') setSharedEFiles([file]);
+            else if (type === 'ACCOUNTING') setSharedAccFiles([file]);
+            else setSharedAccMatrahFiles([file]);
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            setError(`Demo dosyasi olusturulamadi: ${message}`);
+        }
     };
 
     const resetAll = async () => {

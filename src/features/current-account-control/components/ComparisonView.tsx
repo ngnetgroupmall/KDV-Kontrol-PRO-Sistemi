@@ -20,6 +20,9 @@ import type { ComparisonResult, MatchStatus, TransactionReviewMap } from '../uti
 import { getResultReviewSummary } from '../utils/reviewHelpers';
 import { Card } from '../../../components/common/Card';
 import TransactionComparisonModal from './TransactionComparisonModal';
+import { useEscapeKey } from '../../../hooks/useEscapeKey';
+import { applyStyledSheet } from '../../../utils/excelStyle';
+import { formatAmount } from '../../../utils/formatters';
 
 interface ComparisonViewProps {
     results: ComparisonResult[];
@@ -38,13 +41,6 @@ interface ComparisonViewProps {
 const TOLERANCE = 0.01;
 type ViewFilter = 'ALL' | MatchStatus | 'UNMATCHED';
 
-const formatAmount = (value: number): string => {
-    return new Intl.NumberFormat('tr-TR', {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-    }).format(value);
-};
-
 const formatFileDate = (date: Date): string => {
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -61,6 +57,8 @@ const sanitizeFileName = (value: string): string => {
 
     return withoutControlChars.replace(INVALID_FILE_NAME_CHARS, '_').replace(/\s+/g, '_');
 };
+
+
 
 const getCellTextLength = (value: unknown): number => {
     if (value === null || value === undefined) return 0;
@@ -121,6 +119,9 @@ const createTableSheet = (
             });
         });
     }
+
+    // Apply borders and header styling (preserves existing !cols and number formats)
+    applyStyledSheet(worksheet, { headerRowIndex, numericColumns });
 
     return worksheet;
 };
@@ -322,6 +323,17 @@ export default function ComparisonView({
 
     const isAnyOverlayOpen = Boolean(manualSource || isManualDictionaryOpen);
 
+    useEscapeKey(() => {
+        if (manualSource) {
+            closeManualDialog();
+            return;
+        }
+
+        if (isManualDictionaryOpen) {
+            closeManualDictionary();
+        }
+    }, isAnyOverlayOpen);
+
     useEffect(() => {
         if (!isAnyOverlayOpen) return;
 
@@ -336,29 +348,14 @@ export default function ComparisonView({
         document.body.style.width = '100%';
         document.body.style.overflowY = 'scroll';
 
-        const onKeyDown = (event: KeyboardEvent) => {
-            if (event.key !== 'Escape') return;
-
-            if (manualSource) {
-                closeManualDialog();
-                return;
-            }
-
-            if (isManualDictionaryOpen) {
-                closeManualDictionary();
-            }
-        };
-
-        window.addEventListener('keydown', onKeyDown);
         return () => {
-            window.removeEventListener('keydown', onKeyDown);
             document.body.style.position = originalPosition;
             document.body.style.top = originalTop;
             document.body.style.width = originalWidth;
             document.body.style.overflowY = originalOverflowY;
             window.scrollTo(0, scrollY);
         };
-    }, [closeManualDialog, closeManualDictionary, isAnyOverlayOpen, isManualDictionaryOpen, manualSource]);
+    }, [isAnyOverlayOpen]);
 
     const openManualDialog = (result: ComparisonResult) => {
         if (!result.smmmAccount) return;
@@ -543,9 +540,8 @@ export default function ComparisonView({
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <button type="button" onClick={() => handleCardFilterClick('ALL')} className="w-full text-left">
                     <Card
-                        className={`bg-slate-800 border-slate-700 transition-colors hover:border-blue-500/60 ${
-                            filter === 'ALL' ? 'ring-1 ring-blue-500/60 border-blue-500/60' : ''
-                        }`}
+                        className={`bg-slate-800 border-slate-700 transition-colors hover:border-blue-500/60 ${filter === 'ALL' ? 'ring-1 ring-blue-500/60 border-blue-500/60' : ''
+                            }`}
                     >
                         <div className="flex items-center gap-4">
                             <div className="p-3 bg-blue-500/20 rounded-lg text-blue-400">
@@ -566,9 +562,8 @@ export default function ComparisonView({
 
                 <button type="button" onClick={() => handleCardFilterClick('MATCHED')} className="w-full text-left">
                     <Card
-                        className={`bg-slate-800 border-slate-700 transition-colors hover:border-green-500/60 ${
-                            filter === 'MATCHED' ? 'ring-1 ring-green-500/60 border-green-500/60' : ''
-                        }`}
+                        className={`bg-slate-800 border-slate-700 transition-colors hover:border-green-500/60 ${filter === 'MATCHED' ? 'ring-1 ring-green-500/60 border-green-500/60' : ''
+                            }`}
                     >
                         <div className="flex items-center gap-4">
                             <div className="p-3 bg-green-500/20 rounded-lg text-green-400">
@@ -584,9 +579,8 @@ export default function ComparisonView({
 
                 <button type="button" onClick={() => handleCardFilterClick('DIFFERENCE')} className="w-full text-left">
                     <Card
-                        className={`bg-slate-800 border-slate-700 transition-colors hover:border-yellow-500/60 ${
-                            filter === 'DIFFERENCE' ? 'ring-1 ring-yellow-500/60 border-yellow-500/60' : ''
-                        }`}
+                        className={`bg-slate-800 border-slate-700 transition-colors hover:border-yellow-500/60 ${filter === 'DIFFERENCE' ? 'ring-1 ring-yellow-500/60 border-yellow-500/60' : ''
+                            }`}
                     >
                         <div className="flex items-center gap-4">
                             <div className="p-3 bg-yellow-500/20 rounded-lg text-yellow-400">
@@ -602,9 +596,8 @@ export default function ComparisonView({
 
                 <button type="button" onClick={() => handleCardFilterClick('UNMATCHED')} className="w-full text-left">
                     <Card
-                        className={`bg-slate-800 border-slate-700 transition-colors hover:border-red-500/60 ${
-                            filter === 'UNMATCHED' ? 'ring-1 ring-red-500/60 border-red-500/60' : ''
-                        }`}
+                        className={`bg-slate-800 border-slate-700 transition-colors hover:border-red-500/60 ${filter === 'UNMATCHED' ? 'ring-1 ring-red-500/60 border-red-500/60' : ''
+                            }`}
                     >
                         <div className="flex items-center gap-4">
                             <div className="p-3 bg-red-500/20 rounded-lg text-red-400">
@@ -719,9 +712,8 @@ export default function ComparisonView({
                                             />
                                             {entry.reviewSummary.totalIssues > 0 && (
                                                 <p
-                                                    className={`text-[10px] mt-1 ${
-                                                        entry.isResolvedDifference ? 'text-emerald-400' : 'text-slate-400'
-                                                    }`}
+                                                    className={`text-[10px] mt-1 ${entry.isResolvedDifference ? 'text-emerald-400' : 'text-slate-400'
+                                                        }`}
                                                 >
                                                     Duzeltildi: {entry.reviewSummary.correctedIssues}/{entry.reviewSummary.totalIssues}
                                                 </p>
@@ -883,11 +875,10 @@ export default function ComparisonView({
                                                     <button
                                                         key={candidate.code}
                                                         onClick={() => setManualTargetCode(candidate.code)}
-                                                        className={`w-full text-left p-3 transition-colors ${
-                                                            isSelected
-                                                                ? 'bg-violet-500/20 border-l-2 border-violet-400'
-                                                                : 'hover:bg-slate-800/60'
-                                                        }`}
+                                                        className={`w-full text-left p-3 transition-colors ${isSelected
+                                                            ? 'bg-violet-500/20 border-l-2 border-violet-400'
+                                                            : 'hover:bg-slate-800/60'
+                                                            }`}
                                                     >
                                                         <div className="flex items-center justify-between gap-3">
                                                             <div>

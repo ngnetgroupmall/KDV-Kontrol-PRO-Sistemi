@@ -1,4 +1,5 @@
-import type { KebirAnalysisResult, AccountDetail } from '../utils/kebirParser';
+import type { KebirAnalysisResult, AccountDetail } from '../../common/types';
+import { formatCurrency } from '../../../utils/formatters';
 import { Card } from '../../../components/common/Card';
 import { BarChart2, Hash, Layers, PieChart, TrendingUp, RefreshCw, Activity, Bug, AlertTriangle, FileText } from 'lucide-react';
 import { useState } from 'react';
@@ -16,8 +17,7 @@ export default function AnalysisDashboard({ data, onReset }: AnalysisDashboardPr
     const [selectedAccount, setSelectedAccount] = useState<AccountDetail | null>(null);
     const [showMizan, setShowMizan] = useState(false);
 
-    const formatCurrency = (val: number) =>
-        new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY' }).format(val);
+
 
     const maxMonthVal = Math.max(...data.monthlyDensity.map(m => chartMode === 'VOLUME' ? m.volume : m.count));
 
@@ -306,8 +306,6 @@ export default function AnalysisDashboard({ data, onReset }: AnalysisDashboardPr
                     onClose={() => setShowMizan(false)}
                     onSelectAccount={(acc) => {
                         setSelectedAccount(acc);
-                        // Optional: close Mizan modal if looking at detail, OR keep it open behind? 
-                        // UX: Keeping it open allows going back easily. Stacked modals.
                     }}
                 />
             )}

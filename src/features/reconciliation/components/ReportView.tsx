@@ -3,18 +3,24 @@ import * as XLSX from 'xlsx';
 import { Download, Filter, Check } from 'lucide-react';
 import { Button } from '../../../components/common/Button';
 import { cn } from '../../../components/common/Button';
+import { applyStyledSheet } from '../../../utils/excelStyle';
+
+import type { ReconciliationReportData } from '../../../types';
+
+/** A single report row — keys are column headers, values are display data */
+type ReportRow = Record<string, string | number | Date | null>;
 
 interface ReportViewProps {
-    reports: any;
+    reports: ReconciliationReportData;
     onReset: () => void;
 }
 
 export function ReportView({ reports, onReset }: ReportViewProps) {
     const [activeTab, setActiveTab] = useState(1);
 
-    const downloadExcel = (data: any[], fileName: string) => {
+    const downloadExcel = (data: ReportRow[], fileName: string) => {
         const formattedData = data.map(row => {
-            const newRow: any = {};
+            const newRow: Record<string, unknown> = {};
             Object.entries(row).forEach(([key, val]) => {
                 if (typeof val === 'string' && /^\d{2}\.\d{2}\.\d{4}$/.test(val)) {
                     const [d, m, y] = val.split('.').map(Number);
@@ -27,6 +33,14 @@ export function ReportView({ reports, onReset }: ReportViewProps) {
         });
 
         const ws = XLSX.utils.json_to_sheet(formattedData, { cellDates: true });
+
+        // Find numeric columns by checking header names for financial keywords
+        const headers = formattedData.length > 0 ? Object.keys(formattedData[0]) : [];
+        const numericCols = headers
+            .map((h, i) => (/tutar|bor[çc]|alacak|fark|matrah|kdv/i.test(h) ? i : -1))
+            .filter((i) => i >= 0);
+        applyStyledSheet(ws, { headerRowIndex: 0, numericColumns: numericCols });
+
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, "Rapor");
         const safeName = fileName.replace(/[^a-zA-Z0-9ÇĞİÖŞÜçğıöşü]/g, '_');
@@ -62,6 +76,11 @@ export function ReportView({ reports, onReset }: ReportViewProps) {
                             tabs.forEach(tab => {
                                 if (tab.data.length > 0) {
                                     const ws = XLSX.utils.json_to_sheet(tab.data);
+                                    const hdrs = Object.keys(tab.data[0] || {});
+                                    const numCols = hdrs
+                                        .map((h, i) => (/tutar|bor[çc]|alacak|fark|matrah|kdv/i.test(h) ? i : -1))
+                                        .filter((i) => i >= 0);
+                                    applyStyledSheet(ws, { headerRowIndex: 0, numericColumns: numCols });
                                     XLSX.utils.book_append_sheet(wb, ws, tab.label.substring(0, 31));
                                 }
                             });
@@ -123,7 +142,7 @@ export function ReportView({ reports, onReset }: ReportViewProps) {
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-white/5 text-sm text-slate-300">
-                            {currentTabData.map((row: any, i: number) => (
+                            {currentTabData.map((row: ReportRow, i: number) => (
                                 <tr key={i} className="hover:bg-blue-500/5 transition-colors">
                                     {Object.keys(row).filter(k => !['id', 'originalRow', 'validationError', 'multipleInvoicesFound'].includes(k)).map(key => {
                                         let val = row[key];

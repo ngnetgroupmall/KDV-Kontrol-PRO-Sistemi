@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Layers } from 'lucide-react';
 import { useCompany } from '../../context/CompanyContext';
-import type { AccountDetail, CurrentAccountParseSummary, MappingConfig } from '../common/types';
+import type { AccountDetail, CurrentAccountParseSummary, MappingConfig, VoucherEditSource } from '../common/types';
 import type { ComparisonResult, TransactionReviewMap } from './utils/types';
 import DualFileUpload from './components/DualFileUpload';
 import ColumnMapper from './components/ColumnMapper';
@@ -61,26 +61,55 @@ export default function CurrentAccountControlPage() {
     const hasSmmm = smmmData.length > 0;
     const hasFirma = firmaData.length > 0;
 
-    const setSharedSmmmFile = (file: File | null) => {
-        setSmmmFile(file);
+    const clearVoucherEditLogsBySource = async (source: VoucherEditSource) => {
+        await patchActiveCompany((company) => {
+            const currentAccount = company.currentAccount;
+            if (!currentAccount) return {};
+            return {
+                currentAccount: {
+                    ...currentAccount,
+                    voucherEditLogs: (currentAccount.voucherEditLogs || []).filter((log) => log.source !== source),
+                },
+            };
+        });
+    };
+
+    const setSharedCurrentAccountFile = async (key: 'smmmFile' | 'firmaFile', file: File | null) => {
+        if (key === 'smmmFile') {
+            setSmmmFile(file);
+        } else {
+            setFirmaFile(file);
+        }
+
         setActiveUploads((current) => ({
             ...current,
             currentAccount: {
                 ...current.currentAccount,
-                smmmFile: file,
+                [key]: file,
             },
         }));
+
+        if (!file || !activeCompany) return;
+
+        const source: VoucherEditSource = key === 'firmaFile' ? 'FIRMA' : 'SMMM';
+        const sourceLabel = source === 'FIRMA' ? 'Firma' : 'SMMM';
+        const hasSourceLogs = (activeCompany.currentAccount?.voucherEditLogs || []).some((log) => log.source === source);
+        if (!hasSourceLogs) return;
+
+        const shouldClear = window.confirm(
+            `${sourceLabel} kaynaginda kayitli fis duzenleme gecmisi var. Yeni dosya yuklenirken bu kayitlar silinsin mi?`
+        );
+        if (!shouldClear) return;
+
+        await clearVoucherEditLogsBySource(source);
+    };
+
+    const setSharedSmmmFile = (file: File | null) => {
+        void setSharedCurrentAccountFile('smmmFile', file);
     };
 
     const setSharedFirmaFile = (file: File | null) => {
-        setFirmaFile(file);
-        setActiveUploads((current) => ({
-            ...current,
-            currentAccount: {
-                ...current.currentAccount,
-                firmaFile: file,
-            },
-        }));
+        void setSharedCurrentAccountFile('firmaFile', file);
     };
 
     const persistManualMatches = async (nextManualMatches: Record<string, string>) => {

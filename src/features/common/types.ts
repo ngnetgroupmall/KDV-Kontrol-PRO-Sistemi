@@ -1,4 +1,7 @@
+import type { EInvoiceRow, AccountingRow, AccountingMatrahRow } from '../../types';
+
 export interface Transaction {
+    id?: string;
     date: Date | null;
     description: string;
     debit: number;
@@ -11,6 +14,7 @@ export interface Transaction {
     fxDebit?: number;
     fxCredit?: number;
     fxBalance?: number;
+    fxBalanceManual?: boolean;
 }
 
 export interface AccountDetail {
@@ -26,6 +30,29 @@ export interface AccountDetail {
 
 export interface MappingConfig {
     [key: string]: Record<string, string>;
+}
+
+export type VoucherEditSource = 'FIRMA' | 'SMMM';
+
+export interface VoucherEditLogEntry {
+    id: string;
+    createdAt: string;
+    source: VoucherEditSource;
+    transactionId?: string;
+    referenceLogId?: string;
+    undoneAt?: string;
+    undoLogId?: string;
+    voucherNo: string;
+    accountCodeBefore: string;
+    accountNameBefore: string;
+    accountCodeAfter: string;
+    accountNameAfter: string;
+    field: string;
+    fieldLabel: string;
+    oldValue: string;
+    newValue: string;
+    documentNo?: string;
+    description?: string;
 }
 
 export interface CurrentAccountParseSummary {
@@ -98,6 +125,10 @@ export interface Company {
             firma?: CurrentAccountParseSummary;
         };
         forexAccountOverrides?: Record<string, boolean>;
+        mizanApprovals?: Record<string, boolean>;
+        accountStatementRowApprovals?: Record<string, boolean>;
+        voucherEditLogs?: VoucherEditLogEntry[];
+        temporaryTaxPriorYearLoss?: number;
         mappings: MappingConfig;
         manualMatches?: Record<string, string>;
         rowReviews?: Record<string, { corrected: boolean; note?: string; updatedAt?: string }>;
@@ -105,5 +136,17 @@ export interface Company {
 
     kebirAnalysis?: KebirAnalysisResult;
 
-    reconciliation?: any;
+    reconciliation?: {
+        eInvoiceData?: EInvoiceRow[];
+        accountingData?: AccountingRow[];
+        accountingMatrahData?: AccountingMatrahRow[];
+
+        reports?: {
+            report1: Record<string, string | number | Date | null>[];
+            report2: Record<string, string | number | Date | null>[];
+            report3: Record<string, string | number | Date | null>[];
+            report4?: Record<string, string | number | Date | null>[];
+        };
+        [key: string]: unknown;
+    };
 }

@@ -1,16 +1,38 @@
 import { useMemo, useState } from 'react';
-import { AlertTriangle, Building2, Layers, Search, UserRound } from 'lucide-react';
+import { AlertTriangle, Building2, Download, Layers, Search, UserRound } from 'lucide-react';
 import { Card } from '../../components/common/Card';
 import { useCompany } from '../../context/CompanyContext';
 import type { AccountDetail, Company, MappingConfig } from '../common/types';
+import {
+    applyVoucherEditsToAccounts,
+    appendVoucherRowToAccounts,
+    filterCurrentAccountScopeData,
+    type VoucherAddRowRequest,
+    type VoucherEditRequest,
+} from '../common/voucherEditService';
 import { getMainAccountCode, resolveAccountBalanceRule, type ExpectedBalanceSide } from './accountingRules';
 import { resolveForexAccountType } from './forexAccountRules';
 import AccountStatementModal from './components/AccountStatementModal';
-import VoucherDetailModal, { type VoucherDetailRow } from './components/VoucherDetailModal';
+import VoucherDetailModal, {
+    type VoucherAccountOption,
+    type VoucherDetailRow,
+    type VoucherMutationResponse,
+} from './components/VoucherDetailModal';
+import { formatCurrency } from '../../utils/formatters';
+import { matchesSearchAcrossFields } from '../../utils/search';
+import { parseTurkishNumber } from '../../utils/parsers';
+import {
+    normalizeAccountDisplayName,
+    resolveMainAccountStandardName,
+    resolveMainOrIntermediateAccountName,
+} from './accountNameResolver';
+
+const round2 = (value: number): number => Math.round((value + Number.EPSILON) * 100) / 100;
 
 type MizanSource = 'FIRMA' | 'SMMM';
 type ActualBalanceSide = 'BORC' | 'ALACAK' | 'KAPALI';
 type AccountTypeMode = 'TL' | 'FOREX' | 'AUTO';
+type ApprovalFilter = 'ALL' | 'APPROVED' | 'UNAPPROVED';
 
 interface EvaluatedAccount {
     account: AccountDetail;
@@ -20,19 +42,137 @@ interface EvaluatedAccount {
     expectedSide: ExpectedBalanceSide;
     section: string;
     isMismatch: boolean;
+    isApproved: boolean;
+    indentLevel?: number;
+    isGenerated?: boolean;
 }
 
 const EMPTY_ACCOUNTS: AccountDetail[] = [];
 const EMPTY_FOREX_OVERRIDES: Record<string, boolean> = {};
+const EMPTY_APPROVALS: Record<string, boolean> = {};
 const BALANCE_TOLERANCE = 0.01;
 
 const normalizeVoucherNo = (value: string | undefined): string => {
     return String(value || '').trim().replace(/\s+/g, '').toLocaleUpperCase('tr-TR');
 };
 
-const formatCurrency = (value: number): string => {
-    return new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY' }).format(value);
+const getMizanApprovalKey = (source: MizanSource, accountCode: string): string => {
+    return `${source}:${String(accountCode || '').trim().toLocaleUpperCase('tr-TR')}`;
 };
+
+const parseDateInput = (value: string, endOfDay = false): Date | null => {
+    if (!value) return null;
+    const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!match) return null;
+
+    const year = Number(match[1]);
+    const month = Number(match[2]) - 1;
+    const day = Number(match[3]);
+    const parsed = new Date(year, month, day, endOfDay ? 23 : 0, endOfDay ? 59 : 0, endOfDay ? 59 : 0, endOfDay ? 999 : 0);
+    if (Number.isNaN(parsed.getTime())) return null;
+    return parsed;
+};
+
+const toValidCalendarDate = (year: number, month: number, day: number): Date | null => {
+    const date = new Date(year, month - 1, day, 12, 0, 0, 0);
+    if (Number.isNaN(date.getTime())) return null;
+    if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) return null;
+    return date;
+};
+
+const parseTransactionDate = (value: Date | string | number | null | undefined): Date | null => {
+    if (value === null || value === undefined || value === '') return null;
+    if (value instanceof Date) {
+        return Number.isNaN(value.getTime()) ? null : value;
+    }
+
+    if (typeof value === 'number') {
+        const excelEpochUtc = Date.UTC(1899, 11, 30);
+        const date = new Date(excelEpochUtc + Math.round(value * 86400 * 1000));
+        return Number.isNaN(date.getTime()) ? null : date;
+    }
+
+    const raw = String(value).trim();
+    if (!raw) return null;
+
+    const ddMmYyyy = raw.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{2,4})(?:\D.*)?$/);
+    if (ddMmYyyy) {
+        const year = ddMmYyyy[3].length === 2 ? Number(`20${ddMmYyyy[3]}`) : Number(ddMmYyyy[3]);
+        const month = Number(ddMmYyyy[2]);
+        const day = Number(ddMmYyyy[1]);
+        const date = toValidCalendarDate(year, month, day);
+        if (date) return date;
+    }
+
+    const yyyyMmDd = raw.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:[T\s].*)?$/);
+    if (yyyyMmDd) {
+        const year = Number(yyyyMmDd[1]);
+        const month = Number(yyyyMmDd[2]);
+        const day = Number(yyyyMmDd[3]);
+        const date = toValidCalendarDate(year, month, day);
+        if (date) return date;
+    }
+
+    const serialLike = raw.replace(',', '.');
+    if (/^\d{4,6}(?:\.\d+)?$/.test(serialLike)) {
+        const serial = Number(serialLike);
+        if (Number.isFinite(serial) && serial > 20000 && serial < 80000) {
+            const excelEpochUtc = Date.UTC(1899, 11, 30);
+            const date = new Date(excelEpochUtc + Math.round(serial * 86400 * 1000));
+            if (!Number.isNaN(date.getTime())) {
+                return date;
+            }
+        }
+    }
+
+    const parsed = new Date(raw);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+const isDateWithinRange = (year: number, month: number, day: number, from: Date | null, to: Date | null): boolean => {
+    const date = toValidCalendarDate(year, month, day);
+    if (!date) return false;
+    const ts = date.getTime();
+    if (from && ts < from.getTime()) return false;
+    if (to && ts > to.getTime()) return false;
+    return true;
+};
+
+const isTransactionInDateRange = (dateValue: Date | string | number | null | undefined, from: Date | null, to: Date | null): boolean => {
+    if (!from && !to) return true;
+
+    const date = parseTransactionDate(dateValue);
+    if (!date) return false;
+
+    if (isDateWithinRange(date.getFullYear(), date.getMonth() + 1, date.getDate(), from, to)) {
+        return true;
+    }
+
+    const utcYear = date.getUTCFullYear();
+    const utcMonth = date.getUTCMonth() + 1;
+    const utcDay = date.getUTCDate();
+    if (
+        utcYear !== date.getFullYear() ||
+        utcMonth !== date.getMonth() + 1 ||
+        utcDay !== date.getDate()
+    ) {
+        return isDateWithinRange(utcYear, utcMonth, utcDay, from, to);
+    }
+
+    return false;
+};
+
+const getTransactionAmount = (value: unknown): number => {
+    if (typeof value === 'number') {
+        return Number.isFinite(value) ? value : 0;
+    }
+    if (typeof value === 'string') {
+        const parsed = parseTurkishNumber(value);
+        return Number.isFinite(parsed) ? parsed : 0;
+    }
+    return 0;
+};
+
 
 const getActualBalanceSide = (balance: number): ActualBalanceSide => {
     if (Math.abs(balance) <= BALANCE_TOLERANCE) return 'KAPALI';
@@ -44,12 +184,18 @@ function MizanContent({ activeCompany }: { activeCompany: Company }) {
     const [selectedSource, setSelectedSource] = useState<MizanSource>('FIRMA');
     const [search, setSearch] = useState('');
     const [showOnlyMismatched, setShowOnlyMismatched] = useState(false);
+    const [approvalFilter, setApprovalFilter] = useState<ApprovalFilter>('ALL');
+    const [dateFrom, setDateFrom] = useState('');
+    const [dateTo, setDateTo] = useState('');
     const [selectedAccountCode, setSelectedAccountCode] = useState<string | null>(null);
     const [selectedVoucherNo, setSelectedVoucherNo] = useState<string | null>(null);
+
+
 
     const firmaData = activeCompany.currentAccount?.firmaFullData ?? EMPTY_ACCOUNTS;
     const smmmData = activeCompany.currentAccount?.smmmFullData ?? EMPTY_ACCOUNTS;
     const forexOverrides = activeCompany.currentAccount?.forexAccountOverrides ?? EMPTY_FOREX_OVERRIDES;
+    const mizanApprovals = activeCompany.currentAccount?.mizanApprovals ?? EMPTY_APPROVALS;
 
     const source = useMemo<MizanSource>(() => {
         if (selectedSource === 'FIRMA' && firmaData.length > 0) return 'FIRMA';
@@ -63,27 +209,142 @@ function MizanContent({ activeCompany }: { activeCompany: Company }) {
         return source === 'FIRMA' ? firmaData : smmmData;
     }, [source, firmaData, smmmData]);
 
-    const mainNameByCode = useMemo(() => {
-        const map = new Map<string, string>();
+    const filterDateFrom = useMemo(() => parseDateInput(dateFrom, false), [dateFrom]);
+    const filterDateTo = useMemo(() => parseDateInput(dateTo, true), [dateTo]);
+    const hasDateRangeFilter = Boolean(filterDateFrom || filterDateTo);
+    const hasInvalidDateRange = Boolean(filterDateFrom && filterDateTo && filterDateFrom.getTime() > filterDateTo.getTime());
 
-        sourceData.forEach((account) => {
+    const scopedSourceData = useMemo<AccountDetail[]>(() => {
+        if (!hasDateRangeFilter) return sourceData;
+        if (hasInvalidDateRange) return [];
+
+        return sourceData
+            .map((account) => {
+                const scopedTransactions = account.transactions.filter((transaction) => (
+                    isTransactionInDateRange(transaction.date, filterDateFrom, filterDateTo)
+                ));
+                const totalDebit = round2(scopedTransactions.reduce((sum, transaction) => sum + getTransactionAmount(transaction.debit), 0));
+                const totalCredit = round2(scopedTransactions.reduce((sum, transaction) => sum + getTransactionAmount(transaction.credit), 0));
+                const balance = round2(totalDebit - totalCredit);
+
+                return {
+                    ...account,
+                    transactions: scopedTransactions,
+                    totalDebit,
+                    totalCredit,
+                    balance,
+                    transactionCount: scopedTransactions.length,
+                };
+            })
+            .filter((account) => (
+                account.transactionCount > 0 ||
+                Math.abs(account.totalDebit) > BALANCE_TOLERANCE ||
+                Math.abs(account.totalCredit) > BALANCE_TOLERANCE
+            ));
+    }, [sourceData, hasDateRangeFilter, hasInvalidDateRange, filterDateFrom, filterDateTo]);
+
+    const evaluatedAccounts = useMemo<EvaluatedAccount[]>(() => {
+        const map = new Map<string, AccountDetail>();
+        const hierarchyKeys = new Set<string>();
+        const leafCodeSet = new Set<string>();
+
+        // 1. Populate map with existing detail accounts
+        scopedSourceData.forEach((account) => {
+            map.set(account.code, { ...account });
+            hierarchyKeys.add(account.code);
+            leafCodeSet.add(account.code);
+        });
+
+        // 2. Generate hierarchy keys (parents)
+        scopedSourceData.forEach((account) => {
+            const parts = account.code.split('.');
+            // e.g. 100.01.001 -> parents: 100, 100.01
+            // e.g. 120 -> parent: none (it is main)
+
+            // First, handled Main Account (3 digits)
             const mainCode = getMainAccountCode(account.code);
-            const name = String(account.name || '').trim();
-            if (!mainCode || !name) return;
+            if (mainCode && mainCode !== account.code) {
+                hierarchyKeys.add(mainCode);
+            }
 
-            const current = map.get(mainCode);
-            if (!current || name.length < current.length) {
-                map.set(mainCode, name);
+            // Handle Intermediate Sub Accounts (Ara Hesap)
+            // We assume '.' separator. If 120.01.001, we want 120.01
+            let currentCode = '';
+            for (let i = 0; i < parts.length - 1; i++) {
+                currentCode = currentCode ? `${currentCode}.${parts[i]}` : parts[i];
+                if (currentCode !== mainCode) { // Avoid duplicating main code processing
+                    hierarchyKeys.add(currentCode);
+                }
             }
         });
 
-        return map;
-    }, [sourceData]);
+        // 3. Create missing parent accounts and aggregate totals
+        hierarchyKeys.forEach(key => {
+            if (!map.has(key)) {
+                map.set(key, {
+                    code: key,
+                    name: '', // Will resolve later
+                    balance: 0,
+                    totalDebit: 0,
+                    totalCredit: 0,
+                    transactionCount: 0,
+                    transactions: [],
+                    vkn: '',
+                });
+            }
+        });
 
-    const evaluatedAccounts = useMemo<EvaluatedAccount[]>(() => {
-        return sourceData.map((account) => {
-            const mainCode = getMainAccountCode(account.code);
-            const rule = resolveAccountBalanceRule(account.code);
+        // Aggregate
+        scopedSourceData.forEach((leaf) => {
+            const parts = leaf.code.split('.');
+            const mainCode = getMainAccountCode(leaf.code);
+
+            // Add to Main
+            if (mainCode && mainCode !== leaf.code && map.has(mainCode)) {
+                const parent = map.get(mainCode)!;
+                parent.totalDebit = round2(parent.totalDebit + leaf.totalDebit);
+                parent.totalCredit = round2(parent.totalCredit + leaf.totalCredit);
+                parent.balance = round2(parent.balance + leaf.balance);
+                parent.transactionCount += leaf.transactionCount;
+            }
+
+            // Add to Sub-levels
+            let currentCode = '';
+            for (let i = 0; i < parts.length - 1; i++) {
+                currentCode = currentCode ? `${currentCode}.${parts[i]}` : parts[i];
+                if (currentCode !== mainCode && map.has(currentCode)) {
+                    const parent = map.get(currentCode)!;
+                    parent.totalDebit = round2(parent.totalDebit + leaf.totalDebit);
+                    parent.totalCredit = round2(parent.totalCredit + leaf.totalCredit);
+                    parent.balance = round2(parent.balance + leaf.balance);
+                    parent.transactionCount += leaf.transactionCount;
+                }
+            }
+        });
+
+        // 4. Resolve Names and Sort
+        const result: EvaluatedAccount[] = [];
+        const sortedKeys = Array.from(hierarchyKeys).sort((a, b) => a.localeCompare(b, 'tr-TR'));
+
+        sortedKeys.forEach(key => {
+            const account = map.get(key)!;
+            const mainCode = getMainAccountCode(key);
+            const isLeaf = leafCodeSet.has(key);
+            const depth = key.includes('.')
+                ? key.split('.').map((part) => part.trim()).filter(Boolean).length
+                : (key.replace(/\D/g, '').length <= 3 ? 1 : 2);
+
+            // Ana ve ara hesaplarda adlari TDHP standardindan zorunlu getiriyoruz.
+            // Alt hesaplarda varsa mevcut isim kullaniliyor, yoksa standart fallback devreye giriyor.
+            const normalizedExistingName = normalizeAccountDisplayName(account.name || '');
+            const resolvedName = (!isLeaf || depth <= 2)
+                ? resolveMainOrIntermediateAccountName(key, normalizedExistingName)
+                : (normalizedExistingName || resolveMainOrIntermediateAccountName(key, normalizedExistingName));
+            const resolvedMainName = resolveMainAccountStandardName(mainCode, normalizedExistingName) || resolvedName;
+
+            account.name = resolvedName;
+
+            const rule = resolveAccountBalanceRule(key); // Check rule for this level
             const actualSide = getActualBalanceSide(account.balance);
             const expectedSide = rule?.expectedBalance || 'FARK_ETMEZ';
             const section = rule?.section || '-';
@@ -92,36 +353,65 @@ function MizanContent({ activeCompany }: { activeCompany: Company }) {
                 actualSide !== 'KAPALI' &&
                 actualSide !== expectedSide
             );
+            const isApproved = Boolean(mizanApprovals[getMizanApprovalKey(source, key)]);
 
-            return {
+            // Determine Indent Level
+            let indentLevel = 0;
+            if (key !== mainCode) {
+                const parts = key.split('.');
+                // If 100.01 -> 2 parts -> level 1?
+                // If 100.01.001 -> 3 parts -> level 2
+                // Base is 1 part (100) -> level 0
+                indentLevel = parts.length > 1 ? parts.length - 1 : 1;
+                // Fallback
+                if (!key.includes('.')) {
+                    indentLevel = key.length > 3 ? 1 : 0;
+                }
+            } else {
+                indentLevel = 0;
+            }
+
+            result.push({
                 account,
                 mainCode,
-                mainName: mainNameByCode.get(mainCode) || account.name || '-',
+                mainName: resolvedMainName,
                 actualSide,
                 expectedSide,
                 section,
                 isMismatch,
-            };
+                isApproved,
+                indentLevel,
+                isGenerated: !isLeaf
+            });
         });
-    }, [sourceData, mainNameByCode]);
+
+        return result;
+    }, [scopedSourceData, mizanApprovals, source]);
+
+    const approvedCount = useMemo(() => {
+        return evaluatedAccounts.filter((row) => row.isApproved).length;
+    }, [evaluatedAccounts]);
+
+    const totalEvaluatedCount = evaluatedAccounts.length;
 
     const visibleAccounts = useMemo(() => {
-        const query = search.trim().toLocaleLowerCase('tr-TR');
+        const query = search.trim();
 
         return evaluatedAccounts.filter((row) => {
             if (showOnlyMismatched && !row.isMismatch) return false;
+            if (approvalFilter === 'APPROVED' && !row.isApproved) return false;
+            if (approvalFilter === 'UNAPPROVED' && row.isApproved) return false;
 
-            if (!query) return true;
-            return (
-                row.account.code.toLocaleLowerCase('tr-TR').includes(query) ||
-                row.account.name.toLocaleLowerCase('tr-TR').includes(query) ||
-                row.mainCode.toLocaleLowerCase('tr-TR').includes(query) ||
-                row.mainName.toLocaleLowerCase('tr-TR').includes(query) ||
-                row.expectedSide.toLocaleLowerCase('tr-TR').includes(query) ||
-                row.section.toLocaleLowerCase('tr-TR').includes(query)
-            );
+            return matchesSearchAcrossFields(query, [
+                row.account.code,
+                row.account.name,
+                row.mainCode,
+                row.mainName,
+                row.expectedSide,
+                row.section,
+            ]);
         });
-    }, [evaluatedAccounts, search, showOnlyMismatched]);
+    }, [evaluatedAccounts, search, showOnlyMismatched, approvalFilter]);
 
     const mismatchCount = useMemo(() => {
         return evaluatedAccounts.filter((row) => row.isMismatch).length;
@@ -136,6 +426,19 @@ function MizanContent({ activeCompany }: { activeCompany: Company }) {
         if (!selectedAccount) return null;
         return resolveForexAccountType(selectedAccount.code, selectedAccount.name || '', forexOverrides);
     }, [selectedAccount, forexOverrides]);
+
+    const voucherAccountOptions = useMemo<VoucherAccountOption[]>(() => {
+        return sourceData
+            .map((account) => ({
+                code: account.code,
+                name: account.name || '',
+            }))
+            .sort((left, right) => {
+                const codeCompare = left.code.localeCompare(right.code, 'tr-TR');
+                if (codeCompare !== 0) return codeCompare;
+                return left.name.localeCompare(right.name, 'tr-TR');
+            });
+    }, [sourceData]);
 
     const handleAccountTypeChange = async (mode: AccountTypeMode) => {
         if (!selectedAccount) return;
@@ -166,6 +469,208 @@ function MizanContent({ activeCompany }: { activeCompany: Company }) {
         });
     };
 
+    const handleAccountApprovalToggle = async (accountCode: string, currentlyApproved: boolean) => {
+        const approvalKey = getMizanApprovalKey(source, accountCode);
+
+        await patchActiveCompany((company) => {
+            const currentAccount = company.currentAccount || {
+                smmmData: [] as AccountDetail[],
+                firmaData: [] as AccountDetail[],
+                mappings: {} as MappingConfig,
+            };
+
+            const nextApprovals = {
+                ...(currentAccount.mizanApprovals || {}),
+            };
+
+            if (currentlyApproved) {
+                delete nextApprovals[approvalKey];
+            } else {
+                nextApprovals[approvalKey] = true;
+            }
+
+            return {
+                currentAccount: {
+                    ...currentAccount,
+                    mizanApprovals: nextApprovals,
+                },
+            };
+        });
+    };
+
+    const handleVoucherRowEditBatch = async (requests: VoucherEditRequest[]): Promise<VoucherMutationResponse> => {
+        const queue = (requests || []).filter(Boolean);
+        if (!queue.length) return { ok: true };
+
+        const sourceRequests = queue.filter((item) => item.locator.source === source);
+        if (sourceRequests.length !== queue.length) {
+            return { ok: false, error: 'Kaynaklar karisik oldugu icin toplu kayit yapilamadi.' };
+        }
+
+        let response: VoucherMutationResponse = { ok: true };
+
+        await patchActiveCompany((company) => {
+            const currentAccount = company.currentAccount || {
+                smmmData: [] as AccountDetail[],
+                firmaData: [] as AccountDetail[],
+                smmmFullData: [] as AccountDetail[],
+                firmaFullData: [] as AccountDetail[],
+                mappings: {} as MappingConfig,
+            };
+
+            if (source === 'FIRMA') {
+                const result = applyVoucherEditsToAccounts(currentAccount.firmaFullData || [], sourceRequests);
+                if (result.error) {
+                    response = { ok: false, error: result.error };
+                    return {};
+                }
+                if (!result.changed) {
+                    response = { ok: true };
+                    return {};
+                }
+
+                response = { ok: true, focusVoucherNo: result.focusVoucherNo };
+                return {
+                    currentAccount: {
+                        ...currentAccount,
+                        firmaFullData: result.accounts,
+                        firmaData: filterCurrentAccountScopeData(result.accounts),
+                        voucherEditLogs: [
+                            ...(currentAccount.voucherEditLogs || []),
+                            ...result.logEntries,
+                        ],
+                    },
+                };
+            }
+
+            const result = applyVoucherEditsToAccounts(currentAccount.smmmFullData || [], sourceRequests);
+            if (result.error) {
+                response = { ok: false, error: result.error };
+                return {};
+            }
+            if (!result.changed) {
+                response = { ok: true };
+                return {};
+            }
+
+            response = { ok: true, focusVoucherNo: result.focusVoucherNo };
+            return {
+                currentAccount: {
+                    ...currentAccount,
+                    smmmFullData: result.accounts,
+                    smmmData: filterCurrentAccountScopeData(result.accounts),
+                    voucherEditLogs: [
+                        ...(currentAccount.voucherEditLogs || []),
+                        ...result.logEntries,
+                    ],
+                },
+            };
+        });
+
+        return response;
+    };
+
+    const handleVoucherRowEdit = async (request: VoucherEditRequest): Promise<VoucherMutationResponse> => {
+        return handleVoucherRowEditBatch([request]);
+    };
+
+    const handleVoucherRowAdd = async (request: VoucherAddRowRequest): Promise<VoucherMutationResponse> => {
+        let response: VoucherMutationResponse = { ok: true };
+
+        await patchActiveCompany((company) => {
+            const currentAccount = company.currentAccount || {
+                smmmData: [] as AccountDetail[],
+                firmaData: [] as AccountDetail[],
+                smmmFullData: [] as AccountDetail[],
+                firmaFullData: [] as AccountDetail[],
+                mappings: {} as MappingConfig,
+            };
+
+            if (request.source === 'FIRMA') {
+                const result = appendVoucherRowToAccounts(currentAccount.firmaFullData || [], request);
+                if (result.error) {
+                    response = { ok: false, error: result.error };
+                    return {};
+                }
+                if (!result.changed) {
+                    response = { ok: true };
+                    return {};
+                }
+
+                response = { ok: true, focusVoucherNo: result.focusVoucherNo };
+                return {
+                    currentAccount: {
+                        ...currentAccount,
+                        firmaFullData: result.accounts,
+                        firmaData: filterCurrentAccountScopeData(result.accounts),
+                        voucherEditLogs: [
+                            ...(currentAccount.voucherEditLogs || []),
+                            ...(result.logEntry ? [result.logEntry] : []),
+                        ],
+                    },
+                };
+            }
+
+            const result = appendVoucherRowToAccounts(currentAccount.smmmFullData || [], request);
+            if (result.error) {
+                response = { ok: false, error: result.error };
+                return {};
+            }
+            if (!result.changed) {
+                response = { ok: true };
+                return {};
+            }
+
+            response = { ok: true, focusVoucherNo: result.focusVoucherNo };
+            return {
+                currentAccount: {
+                    ...currentAccount,
+                    smmmFullData: result.accounts,
+                    smmmData: filterCurrentAccountScopeData(result.accounts),
+                    voucherEditLogs: [
+                        ...(currentAccount.voucherEditLogs || []),
+                        ...(result.logEntry ? [result.logEntry] : []),
+                    ],
+                },
+            };
+        });
+
+        return response;
+    };
+
+    const handleDownloadMizanExcel = async () => {
+        const XLSX = await import('xlsx');
+        const { applyStyledSheet } = await import('../../utils/excelStyle');
+
+        const rows = visibleAccounts.map((row) => ({
+            'Hesap Kodu': row.account.code,
+            'Hesap Adi': row.account.name || '',
+            Borc: row.account.totalDebit,
+            Alacak: row.account.totalCredit,
+            Bakiye: Math.abs(row.account.balance),
+            'Bakiye Yonu': row.account.balance >= 0 ? 'Borc (B)' : 'Alacak (A)',
+            'Beklenen Yon': row.expectedSide,
+            'Gerceklesen Yon': row.actualSide,
+            Bilanco: row.section,
+            Uyumsuz: row.isMismatch ? 'Evet' : 'Hayir',
+            Onay: row.isApproved ? 'Onayli' : 'Onaysiz',
+            Hareket: row.account.transactionCount,
+        }));
+
+        const worksheet = XLSX.utils.json_to_sheet(rows);
+        applyStyledSheet(worksheet, { headerRowIndex: 0, numericColumns: [2, 3, 4, 11] });
+
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, 'Mizan');
+
+        const datePart = new Date().toISOString().slice(0, 10);
+        const safeSource = source.toLocaleLowerCase('tr-TR').replace(/[^\w.-]+/g, '_');
+        const dateFilterSuffix = hasDateRangeFilter
+            ? `_filtreli${dateFrom ? `_from_${dateFrom}` : ''}${dateTo ? `_to_${dateTo}` : ''}`
+            : '';
+        XLSX.writeFile(workbook, `mizan_${safeSource}_${datePart}${dateFilterSuffix}.xlsx`);
+    };
+
     const voucherRows = useMemo<VoucherDetailRow[]>(() => {
         if (!selectedVoucherNo) return [];
         const target = normalizeVoucherNo(selectedVoucherNo);
@@ -173,9 +678,14 @@ function MizanContent({ activeCompany }: { activeCompany: Company }) {
 
         const rows: VoucherDetailRow[] = [];
         sourceData.forEach((account) => {
-            account.transactions.forEach((transaction) => {
+            account.transactions.forEach((transaction, transactionIndex) => {
                 if (normalizeVoucherNo(transaction.voucherNo) !== target) return;
                 rows.push({
+                    source,
+                    sourceAccountCode: account.code,
+                    sourceTransactionIndex: transactionIndex,
+                    sourceTransactionId: transaction.id,
+                    voucherNo: transaction.voucherNo,
                     accountCode: account.code,
                     accountName: account.name,
                     documentNo: transaction.documentNo || transaction.voucherNo,
@@ -195,14 +705,17 @@ function MizanContent({ activeCompany }: { activeCompany: Company }) {
         rows.sort((a, b) => {
             const aTime = a.date ? a.date.getTime() : Number.MAX_SAFE_INTEGER;
             const bTime = b.date ? b.date.getTime() : Number.MAX_SAFE_INTEGER;
-            return aTime - bTime;
+            if (aTime !== bTime) return aTime - bTime;
+            const accountCompare = a.accountCode.localeCompare(b.accountCode, 'tr-TR');
+            if (accountCompare !== 0) return accountCompare;
+            return a.sourceTransactionIndex - b.sourceTransactionIndex;
         });
 
         return rows;
-    }, [selectedVoucherNo, sourceData]);
+    }, [selectedVoucherNo, sourceData, source]);
 
     const summary = useMemo(() => {
-        return sourceData.reduce(
+        return scopedSourceData.reduce(
             (accumulator, account) => {
                 accumulator.totalDebit += account.totalDebit;
                 accumulator.totalCredit += account.totalCredit;
@@ -211,7 +724,7 @@ function MizanContent({ activeCompany }: { activeCompany: Company }) {
             },
             { totalDebit: 0, totalCredit: 0, totalTransactions: 0 }
         );
-    }, [sourceData]);
+    }, [scopedSourceData]);
 
     const hasAnyData = firmaData.length > 0 || smmmData.length > 0;
 
@@ -275,124 +788,215 @@ function MizanContent({ activeCompany }: { activeCompany: Company }) {
                 )}
             </Card>
 
-            {sourceData.length > 0 && (
-                <Card className="space-y-4">
-                    <div className="flex items-center justify-between gap-4 flex-wrap">
-                        <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 text-xs">
-                            <div className="rounded-lg bg-slate-900/50 border border-slate-700 px-3 py-2">
-                                <p className="text-slate-500">Hesap sayisi</p>
-                                <p className="text-white font-semibold text-sm">{sourceData.length}</p>
+            {
+                sourceData.length > 0 && (
+                    <Card className="space-y-4">
+                        <div className="flex items-center justify-between gap-4 flex-wrap">
+                            <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 text-xs">
+                                <div className="rounded-lg bg-slate-900/50 border border-slate-700 px-3 py-2">
+                                    <p className="text-slate-500">Hesap sayisi</p>
+                                    <p className="text-white font-semibold text-sm">{totalEvaluatedCount}</p>
+                                </div>
+                                <div className="rounded-lg bg-slate-900/50 border border-slate-700 px-3 py-2">
+                                    <p className="text-slate-500">Toplam borc</p>
+                                    <p className="text-emerald-300 font-semibold text-sm">{formatCurrency(summary.totalDebit)}</p>
+                                </div>
+                                <div className="rounded-lg bg-slate-900/50 border border-slate-700 px-3 py-2">
+                                    <p className="text-slate-500">Toplam alacak</p>
+                                    <p className="text-rose-300 font-semibold text-sm">{formatCurrency(summary.totalCredit)}</p>
+                                </div>
+                                <div className={`rounded-lg border px-3 py-2 ${mismatchCount > 0 ? 'bg-red-500/10 border-red-500/30' : 'bg-slate-900/50 border-slate-700'}`}>
+                                    <p className="text-slate-500">Uyumsuz hesap</p>
+                                    <p className={`font-semibold text-sm ${mismatchCount > 0 ? 'text-red-300' : 'text-slate-300'}`}>{mismatchCount}</p>
+                                </div>
                             </div>
-                            <div className="rounded-lg bg-slate-900/50 border border-slate-700 px-3 py-2">
-                                <p className="text-slate-500">Toplam borc</p>
-                                <p className="text-emerald-300 font-semibold text-sm">{formatCurrency(summary.totalDebit)}</p>
-                            </div>
-                            <div className="rounded-lg bg-slate-900/50 border border-slate-700 px-3 py-2">
-                                <p className="text-slate-500">Toplam alacak</p>
-                                <p className="text-rose-300 font-semibold text-sm">{formatCurrency(summary.totalCredit)}</p>
-                            </div>
-                            <div className={`rounded-lg border px-3 py-2 ${mismatchCount > 0 ? 'bg-red-500/10 border-red-500/30' : 'bg-slate-900/50 border-slate-700'}`}>
-                                <p className="text-slate-500">Uyumsuz hesap</p>
-                                <p className={`font-semibold text-sm ${mismatchCount > 0 ? 'text-red-300' : 'text-slate-300'}`}>{mismatchCount}</p>
-                            </div>
-                        </div>
 
-                        <div className="flex items-center gap-2 w-full sm:w-auto">
-                            <button
-                                type="button"
-                                onClick={() => setShowOnlyMismatched((value) => !value)}
-                                className={`h-10 px-3 rounded-lg border text-xs font-semibold whitespace-nowrap transition-colors ${showOnlyMismatched
-                                    ? 'bg-red-600/20 border-red-500/40 text-red-200'
-                                    : 'bg-slate-900/50 border-slate-700 text-slate-300 hover:border-red-400/40'
-                                    }`}
-                            >
-                                <span className="inline-flex items-center gap-1.5">
-                                    <AlertTriangle size={14} />
-                                    {showOnlyMismatched ? 'Tumunu Goster' : 'Sadece Uyumsuzlar'}
-                                </span>
-                            </button>
+                            <div className="flex items-center gap-2 w-full sm:w-auto">
+                                <button
+                                    type="button"
+                                    onClick={() => setShowOnlyMismatched((value) => !value)}
+                                    className={`h-10 px-3 rounded-lg border text-xs font-semibold whitespace-nowrap transition-colors ${showOnlyMismatched
+                                        ? 'bg-red-600/20 border-red-500/40 text-red-200'
+                                        : 'bg-slate-900/50 border-slate-700 text-slate-300 hover:border-red-400/40'
+                                        }`}
+                                >
+                                    <span className="inline-flex items-center gap-1.5">
+                                        <AlertTriangle size={14} />
+                                        {showOnlyMismatched ? 'Tumunu Goster' : 'Sadece Uyumsuzlar'}
+                                    </span>
+                                </button>
 
-                            <div className="relative w-full sm:w-80">
-                                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+                                <select
+                                    value={approvalFilter}
+                                    onChange={(event) => setApprovalFilter(event.target.value as ApprovalFilter)}
+                                    className="h-10 px-3 bg-slate-900 border border-slate-700 rounded-lg text-xs text-slate-200 focus:outline-none focus:border-emerald-500"
+                                >
+                                    <option value="ALL">Tum Hesaplar ({totalEvaluatedCount})</option>
+                                    <option value="APPROVED">Onayli ({approvedCount})</option>
+                                    <option value="UNAPPROVED">Onaysiz ({Math.max(totalEvaluatedCount - approvedCount, 0)})</option>
+                                </select>
+
                                 <input
-                                    type="text"
-                                    value={search}
-                                    onChange={(event) => setSearch(event.target.value)}
-                                    placeholder="Hesap kodu, adi, kural ara..."
-                                    className="w-full bg-slate-900 border border-slate-700 rounded-lg pl-10 pr-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
+                                    type="date"
+                                    value={dateFrom}
+                                    onChange={(event) => setDateFrom(event.target.value)}
+                                    max={dateTo || undefined}
+                                    className="h-10 px-3 bg-slate-900 border border-slate-700 rounded-lg text-xs text-slate-200 focus:outline-none focus:border-blue-500"
+                                    title="Baslangic tarihi"
                                 />
+                                <input
+                                    type="date"
+                                    value={dateTo}
+                                    onChange={(event) => setDateTo(event.target.value)}
+                                    min={dateFrom || undefined}
+                                    className="h-10 px-3 bg-slate-900 border border-slate-700 rounded-lg text-xs text-slate-200 focus:outline-none focus:border-blue-500"
+                                    title="Bitis tarihi"
+                                />
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setDateFrom('');
+                                        setDateTo('');
+                                    }}
+                                    disabled={!dateFrom && !dateTo}
+                                    className="h-10 px-3 rounded-lg border border-slate-700 bg-slate-900/60 text-xs font-semibold text-slate-300 hover:border-slate-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                >
+                                    Tarih Temizle
+                                </button>
+
+                                <div className="relative w-full sm:w-80">
+                                    <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+                                    <input
+                                        type="text"
+                                        value={search}
+                                        onChange={(event) => setSearch(event.target.value)}
+                                        placeholder="Hesap kodu/adi ara (orn: 6*, 60*)"
+                                        className="w-full bg-slate-900 border border-slate-700 rounded-lg pl-10 pr-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
+                                    />
+                                </div>
+
+                                <button
+                                    type="button"
+                                    onClick={() => void handleDownloadMizanExcel()}
+                                    disabled={visibleAccounts.length === 0 || hasInvalidDateRange}
+                                    className="h-10 inline-flex items-center gap-1.5 px-3 rounded-lg border border-blue-500/40 text-blue-200 hover:bg-blue-500/10 transition-colors text-xs font-semibold disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+                                >
+                                    <Download size={14} />
+                                    Excel Indir
+                                </button>
                             </div>
                         </div>
-                    </div>
 
-                    <div className="overflow-auto rounded-xl border border-slate-700 bg-slate-900/40">
-                        <table className="w-full text-left border-collapse">
-                            <thead className="bg-slate-800/80 sticky top-0 z-10">
-                                <tr>
-                                    <th className="p-3 text-xs font-bold text-slate-400 uppercase tracking-wider border-b border-slate-700">Hesap Kodu</th>
-                                    <th className="p-3 text-xs font-bold text-slate-400 uppercase tracking-wider border-b border-slate-700">Hesap Adi</th>
-                                    <th className="p-3 text-xs font-bold text-slate-400 uppercase tracking-wider border-b border-slate-700 text-right">Borc</th>
-                                    <th className="p-3 text-xs font-bold text-slate-400 uppercase tracking-wider border-b border-slate-700 text-right">Alacak</th>
-                                    <th className="p-3 text-xs font-bold text-slate-400 uppercase tracking-wider border-b border-slate-700 text-right">Bakiye</th>
-                                    <th className="p-3 text-xs font-bold text-slate-400 uppercase tracking-wider border-b border-slate-700 text-right">Hareket</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-800">
-                                {visibleAccounts.map((row) => (
-                                    <tr
-                                        key={`${source}-${row.account.code}`}
-                                        className={`${row.isMismatch ? 'bg-red-500/10 hover:bg-red-500/15' : 'hover:bg-slate-800/40'} transition-colors cursor-pointer`}
-                                        onClick={() => setSelectedAccountCode(row.account.code)}
-                                        title={`Hesap ekstresini ac | Beklenen: ${row.expectedSide} | Gerceklesen: ${row.actualSide} | Bilanco: ${row.section}`}
-                                    >
-                                        <td className="p-3 text-sm text-blue-300 font-mono">{row.account.code}</td>
-                                        <td className="p-3 text-sm text-slate-200">{row.account.name || '-'}</td>
-                                        <td className="p-3 text-sm text-slate-300 font-mono text-right">{formatCurrency(row.account.totalDebit)}</td>
-                                        <td className="p-3 text-sm text-slate-300 font-mono text-right">{formatCurrency(row.account.totalCredit)}</td>
-                                        <td className="p-3 text-sm font-mono text-right">
-                                            <span className={row.account.balance >= 0 ? 'text-blue-300' : 'text-amber-300'}>
-                                                {formatCurrency(Math.abs(row.account.balance))} {row.account.balance >= 0 ? '(B)' : '(A)'}
-                                            </span>
-                                        </td>
-                                        <td className="p-3 text-sm text-slate-400 text-right">{row.account.transactionCount}</td>
-                                    </tr>
-                                ))}
-                                {visibleAccounts.length === 0 && (
+                        <div className="overflow-auto rounded-xl border border-slate-700 bg-slate-900/40">
+                            {hasInvalidDateRange && (
+                                <div className="m-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+                                    Baslangic tarihi, bitis tarihinden buyuk olamaz.
+                                </div>
+                            )}
+                            <table className="w-full text-left border-collapse">
+                                <thead className="bg-slate-800/80 sticky top-0 z-10">
                                     <tr>
-                                        <td colSpan={6} className="p-10 text-center text-slate-500">
-                                            Kriterlere uygun hesap bulunamadi.
-                                        </td>
+                                        <th className="p-3 text-xs font-bold text-slate-400 uppercase tracking-wider border-b border-slate-700">Hesap Kodu</th>
+                                        <th className="p-3 text-xs font-bold text-slate-400 uppercase tracking-wider border-b border-slate-700">Hesap Adi</th>
+                                        <th className="p-3 text-xs font-bold text-slate-400 uppercase tracking-wider border-b border-slate-700 text-right">Borc</th>
+                                        <th className="p-3 text-xs font-bold text-slate-400 uppercase tracking-wider border-b border-slate-700 text-right">Alacak</th>
+                                        <th className="p-3 text-xs font-bold text-slate-400 uppercase tracking-wider border-b border-slate-700 text-right">Bakiye</th>
+                                        <th className="p-3 text-xs font-bold text-slate-400 uppercase tracking-wider border-b border-slate-700 text-right">Hareket</th>
+                                        <th className="p-3 text-xs font-bold text-slate-400 uppercase tracking-wider border-b border-slate-700 text-right">Onay</th>
                                     </tr>
-                                )}
-                            </tbody>
-                        </table>
-                    </div>
-
-                    {mismatchCount > 0 && (
-                        <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-200">
-                            <span className="font-semibold">{mismatchCount}</span> hesap, beklenen bakiye yonu kuralina uymuyor. Bu satirlar tabloda kirmizi renkle gosterilir.
+                                </thead>
+                                <tbody className="divide-y divide-slate-800">
+                                    {visibleAccounts.map((row) => (
+                                        <tr
+                                            key={`${source}-${row.account.code}`}
+                                            className={`${row.isApproved
+                                                ? 'bg-emerald-500/10 hover:bg-emerald-500/15'
+                                                : row.isMismatch
+                                                    ? 'bg-red-500/10 hover:bg-red-500/15'
+                                                    : 'hover:bg-slate-800/40'
+                                                } transition-colors cursor-pointer`}
+                                            onClick={() => setSelectedAccountCode(row.account.code)}
+                                            title={`Hesap ekstresini ac | Beklenen: ${row.expectedSide} | Gerceklesen: ${row.actualSide} | Bilanco: ${row.section}`}
+                                        >
+                                            <td className="p-3 text-sm text-blue-300 font-mono">{row.account.code}</td>
+                                            <td className="p-3 text-sm text-slate-200">{row.account.name || '-'}</td>
+                                            <td className="p-3 text-sm text-slate-300 font-mono text-right">{formatCurrency(row.account.totalDebit)}</td>
+                                            <td className="p-3 text-sm text-slate-300 font-mono text-right">{formatCurrency(row.account.totalCredit)}</td>
+                                            <td className="p-3 text-sm font-mono text-right">
+                                                <span className={row.account.balance >= 0 ? 'text-blue-300' : 'text-amber-300'}>
+                                                    {formatCurrency(Math.abs(row.account.balance))} {row.account.balance >= 0 ? '(B)' : '(A)'}
+                                                </span>
+                                            </td>
+                                            <td className="p-3 text-sm text-slate-400 text-right">{row.account.transactionCount}</td>
+                                            <td className="p-3 text-right">
+                                                <button
+                                                    type="button"
+                                                    onClick={(event) => {
+                                                        event.stopPropagation();
+                                                        void handleAccountApprovalToggle(row.account.code, row.isApproved);
+                                                    }}
+                                                    className={`px-3 py-1.5 rounded-md border text-xs font-semibold transition-colors ${row.isApproved
+                                                        ? 'bg-emerald-600/20 border-emerald-500/50 text-emerald-200 hover:bg-emerald-600/30'
+                                                        : 'bg-slate-900/60 border-slate-700 text-slate-300 hover:border-emerald-500/50 hover:text-emerald-200'
+                                                        }`}
+                                                >
+                                                    {row.isApproved ? 'Onaylandi' : 'Onayla'}
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                    {visibleAccounts.length === 0 && (
+                                        <tr>
+                                            <td colSpan={7} className="p-10 text-center text-slate-500">
+                                                Kriterlere uygun hesap bulunamadi.
+                                            </td>
+                                        </tr>
+                                    )}
+                                </tbody>
+                            </table>
                         </div>
-                    )}
-                </Card>
-            )}
 
-            <AccountStatementModal
-                account={selectedAccount}
-                isForexAccount={selectedAccountForexType?.isForex || false}
-                inferredCurrency={selectedAccountForexType?.inferredCurrency}
-                accountTypeSource={selectedAccountForexType?.source}
-                inferenceReason={selectedAccountForexType?.reason}
-                onAccountTypeChange={handleAccountTypeChange}
-                onClose={() => setSelectedAccountCode(null)}
-                onVoucherClick={(voucherNo) => setSelectedVoucherNo(voucherNo)}
-            />
+                        {mismatchCount > 0 && (
+                            <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-200">
+                                <span className="font-semibold">{mismatchCount}</span> hesap, beklenen bakiye yonu kuralina uymuyor. Bu satirlar tabloda kirmizi renkle gosterilir.
+                            </div>
+                        )}
+                    </Card>
+                )
+            }
 
-            <VoucherDetailModal
-                voucherNo={selectedVoucherNo}
-                rows={voucherRows}
-                onClose={() => setSelectedVoucherNo(null)}
-            />
-        </div>
+            {
+                selectedAccountCode && (
+                    <AccountStatementModal
+                        source={source}
+                        account={selectedAccount}
+                        isForexAccount={selectedAccountForexType?.isForex || false}
+                        inferredCurrency={selectedAccountForexType?.inferredCurrency}
+                        accountTypeSource={selectedAccountForexType?.source}
+                        inferenceReason={selectedAccountForexType?.reason}
+                        onAccountTypeChange={handleAccountTypeChange}
+                        onClose={() => setSelectedAccountCode(null)}
+                        onVoucherClick={(voucherNo) => setSelectedVoucherNo(voucherNo)}
+                    />
+                )
+            }
+
+            {
+                selectedVoucherNo && (
+                    <VoucherDetailModal
+                        source={source}
+                        voucherNo={selectedVoucherNo}
+                        rows={voucherRows}
+                        accountOptions={voucherAccountOptions}
+                        onClose={() => setSelectedVoucherNo(null)}
+                        onVoucherChange={(nextVoucherNo) => setSelectedVoucherNo(nextVoucherNo)}
+                        onRowEdit={handleVoucherRowEdit}
+                        onBatchRowEdit={handleVoucherRowEditBatch}
+                        onAddRow={handleVoucherRowAdd}
+                    />
+                )
+            }
+        </div >
     );
 }
 

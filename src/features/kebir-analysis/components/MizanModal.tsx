@@ -1,6 +1,8 @@
 import { X, Search, Activity, FileText } from 'lucide-react';
 import { useState, useMemo } from 'react';
-import type { AccountDetail } from '../utils/kebirParser';
+import type { AccountDetail } from '../../common/types';
+import { formatCurrency } from '../../../utils/formatters';
+import { useEscapeKey } from '../../../hooks/useEscapeKey';
 
 interface MizanModalProps {
     data: AccountDetail[];
@@ -9,10 +11,11 @@ interface MizanModalProps {
 }
 
 export default function MizanModal({ data, onClose, onSelectAccount }: MizanModalProps) {
+    useEscapeKey(onClose, true);
+
     const [search, setSearch] = useState('');
 
-    const formatCurrency = (val: number) =>
-        new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY' }).format(val);
+
 
     const filtered = useMemo(() => {
         return data.filter(acc =>

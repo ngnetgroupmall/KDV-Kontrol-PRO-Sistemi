@@ -32,7 +32,7 @@ export default function FeatureCards({ onAction }: FeatureCardsProps) {
 
                     <Button
                         variant="primary"
-                        onClick={() => onAction('upload')}
+                        onClick={() => onAction('sales')}
                         rightIcon={<ChevronRight size={18} />}
                         className="w-full justify-between"
                     >

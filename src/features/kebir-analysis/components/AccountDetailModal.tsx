@@ -1,5 +1,7 @@
 import { X, Calendar, FileText, ArrowRight } from 'lucide-react';
-import type { AccountDetail } from '../utils/kebirParser';
+import type { AccountDetail } from '../../common/types';
+import { useEscapeKey } from '../../../hooks/useEscapeKey';
+import { formatCurrency, formatDate } from '../../../utils/formatters';
 
 interface AccountDetailModalProps {
     account: AccountDetail | null;
@@ -7,15 +9,10 @@ interface AccountDetailModalProps {
 }
 
 export default function AccountDetailModal({ account, onClose }: AccountDetailModalProps) {
+    useEscapeKey(onClose, !!account);
     if (!account) return null;
 
-    const formatCurrency = (val: number) =>
-        new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY' }).format(val);
 
-    const formatDate = (date: Date | null | undefined) => {
-        if (!date) return '-';
-        return new Date(date).toLocaleDateString('tr-TR');
-    };
 
     return (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">

@@ -1,4 +1,4 @@
-import { LayoutDashboard, Upload, LifeBuoy, Settings, ChevronLeft, ChevronRight, ShoppingCart, PieChart, FileSpreadsheet, Database, Scale, Calculator } from 'lucide-react';
+import { LayoutDashboard, Upload, LifeBuoy, Settings, ChevronLeft, ChevronRight, PieChart, FileSpreadsheet, Database, Scale, Calculator, FileClock, FileText } from 'lucide-react';
 import { cn } from '../common/Button';
 import logo from '../../assets/logo.png';
 
@@ -14,11 +14,12 @@ export default function Sidebar({ activeTab, onTabChange, version, isCollapsed, 
     const menuItems = [
         { id: 'dashboard', label: 'Genel Bakis', icon: LayoutDashboard },
         { id: 'data-upload', label: 'Veri Yukleme', icon: Database },
-        { id: 'sales', label: 'Satis Kontrol', icon: Upload },
-        { id: 'purchase', label: 'Alis Kontrol', icon: ShoppingCart },
+        { id: 'kdv-control', label: 'KDV Kontrol', icon: Upload },
         { id: 'kebir', label: 'Kebir Analizi', icon: PieChart },
         { id: 'mizan', label: 'Mizan', icon: Scale },
         { id: 'temporary-tax', label: 'Gecici Vergi', icon: Calculator },
+        { id: 'voucher-edit-report', label: 'Fis Duzenleme Raporu', icon: FileClock },
+        { id: 'voucher-list', label: 'Fis Listesi', icon: FileText },
         { id: 'current-account', label: 'Cari Hesap Kontrol', icon: FileSpreadsheet },
     ];
 
@@ -38,7 +39,7 @@ export default function Sidebar({ activeTab, onTabChange, version, isCollapsed, 
                 <div className="flex items-center gap-3 min-w-max">
                     <img src={logo} alt="Logo" className="w-10 h-10 object-contain rounded-lg shadow-lg shadow-blue-600/10" />
                     <div className={cn("transition-opacity duration-300", isCollapsed ? "opacity-0 w-0" : "opacity-100")}>
-                        <span className="font-bold text-lg tracking-tight text-white block leading-none">KDV Kontrol</span>
+                        <span className="font-bold text-lg tracking-tight text-white block leading-none">NG NET SMMM AI</span>
                         <span className="text-[10px] text-blue-400 font-bold tracking-wider uppercase">Enterprise</span>
                     </div>
                 </div>

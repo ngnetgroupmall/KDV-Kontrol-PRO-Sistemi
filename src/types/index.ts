@@ -36,3 +36,15 @@ export interface ReconciliationSummary {
   missingInEInvoice: number;
   kdvMismatches: number;
 }
+
+export interface AccountingMatrahRow {
+  id: string;
+  [key: string]: any;
+}
+
+export interface ReconciliationReportData {
+  report1: Record<string, string | number | Date | null>[];
+  report2: Record<string, string | number | Date | null>[];
+  report3: Record<string, string | number | Date | null>[];
+  report4?: Record<string, string | number | Date | null>[];
+}

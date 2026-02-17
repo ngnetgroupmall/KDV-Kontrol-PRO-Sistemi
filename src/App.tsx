@@ -13,20 +13,40 @@ const DataUploadPage = lazy(() => import('./features/data-upload/DataUploadPage'
 const KebirAnalysisPage = lazy(() => import('./features/kebir-analysis/components/KebirAnalysisPage'));
 const MizanPage = lazy(() => import('./features/mizan/MizanPage'));
 const TemporaryTaxPage = lazy(() => import('./features/temporary-tax/TemporaryTaxPage'));
+const VoucherEditReportPage = lazy(() => import('./features/voucher-edit-report/VoucherEditReportPage'));
+const VoucherListPage = lazy(() => import('./features/voucher-list/VoucherListPage'));
 const CurrentAccountControlPage = lazy(() => import('./features/current-account-control/CurrentAccountControlPage'));
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
+  const [kdvMode, setKdvMode] = useState<'SALES' | 'PURCHASE'>('SALES');
   const recon = useReconciliation();
   const { state, actions } = recon;
 
   const handleTabChange = (tab: string) => {
+    if (tab === 'sales') {
+      setKdvMode('SALES');
+      setActiveTab('kdv-control');
+      return;
+    }
+    if (tab === 'purchase') {
+      setKdvMode('PURCHASE');
+      setActiveTab('kdv-control');
+      return;
+    }
     setActiveTab(tab);
   };
 
   const handleStart = (mode: 'SALES' | 'PURCHASE') => {
-    const targetTab = mode === 'SALES' ? 'sales' : 'purchase';
-    setActiveTab(targetTab);
+    setKdvMode(mode);
+    setActiveTab('kdv-control');
+    void actions.resetAll();
+    actions.setStep(1);
+  };
+
+  const handleKdvModeChange = (mode: 'SALES' | 'PURCHASE') => {
+    if (mode === kdvMode) return;
+    setKdvMode(mode);
     void actions.resetAll();
     actions.setStep(1);
   };
@@ -38,7 +58,7 @@ export default function App() {
   );
 
   return (
-    <AppShell activeTab={activeTab} onTabChange={handleTabChange} version="1.6.8">
+    <AppShell activeTab={activeTab} onTabChange={handleTabChange} version="1.6.10">
       {state.loading && (
         <div className="fixed inset-0 bg-[var(--bg-dark)]/80 backdrop-blur-md z-[100] flex flex-col items-center justify-center gap-6 animate-fade-in">
           <div className="relative">
@@ -101,6 +121,7 @@ export default function App() {
           <HeroSection onStart={handleStart} />
           <FeatureCards onAction={(id) => {
             if (id === 'upload') handleTabChange('data-upload');
+            else if (id === 'sales') handleStart('SALES');
             else if (id === 'purchase') handleStart('PURCHASE');
             else handleTabChange(id);
           }} />
@@ -113,9 +134,39 @@ export default function App() {
         </Suspense>
       )}
 
-      {(activeTab === 'sales' || activeTab === 'purchase') && (
+      {activeTab === 'kdv-control' && (
         <Suspense fallback={lazyFallback}>
-          <ReconciliationWizard recon={recon} mode={activeTab === 'sales' ? 'SALES' : 'PURCHASE'} />
+          <div className="space-y-4 animate-fade-in">
+            <div className="rounded-xl border border-slate-700 bg-slate-900/40 p-4 flex items-center justify-between gap-4 flex-wrap">
+              <div>
+                <h2 className="text-lg font-semibold text-white">KDV Kontrol</h2>
+                <p className="text-xs text-slate-400 mt-1">Satis ve alis kontrolu tek modul altinda yonetilir.</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleKdvModeChange('SALES')}
+                  className={`px-3 py-1.5 rounded-md border text-xs font-semibold transition-colors ${kdvMode === 'SALES'
+                    ? 'bg-blue-600/20 border-blue-500/40 text-blue-200'
+                    : 'bg-slate-900 border-slate-700 text-slate-300 hover:border-blue-500/40'
+                    }`}
+                >
+                  Satis Kontrol
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleKdvModeChange('PURCHASE')}
+                  className={`px-3 py-1.5 rounded-md border text-xs font-semibold transition-colors ${kdvMode === 'PURCHASE'
+                    ? 'bg-purple-600/20 border-purple-500/40 text-purple-200'
+                    : 'bg-slate-900 border-slate-700 text-slate-300 hover:border-purple-500/40'
+                    }`}
+                >
+                  Alis Kontrol
+                </button>
+              </div>
+            </div>
+            <ReconciliationWizard recon={recon} mode={kdvMode} />
+          </div>
         </Suspense>
       )}
 
@@ -134,6 +185,18 @@ export default function App() {
       {activeTab === 'temporary-tax' && (
         <Suspense fallback={lazyFallback}>
           <TemporaryTaxPage />
+        </Suspense>
+      )}
+
+      {activeTab === 'voucher-edit-report' && (
+        <Suspense fallback={lazyFallback}>
+          <VoucherEditReportPage />
+        </Suspense>
+      )}
+
+      {activeTab === 'voucher-list' && (
+        <Suspense fallback={lazyFallback}>
+          <VoucherListPage />
         </Suspense>
       )}
 

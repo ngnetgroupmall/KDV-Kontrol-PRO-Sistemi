@@ -1,48 +1,7 @@
 import * as XLSX from 'xlsx';
+import type { AccountDetail, KebirAnalysisResult } from '../../common/types';
 
-export interface Transaction {
-    date: Date | null;
-    description: string;
-    debit: number;
-    credit: number;
-    balance?: number;
-    voucherNo?: string;
-}
 
-export interface AccountDetail {
-    code: string;
-    name: string;
-    totalDebit: number;
-    totalCredit: number;
-    balance: number;
-    transactionCount: number;
-    transactions: Transaction[];
-}
-
-export interface KebirAnalysisResult {
-    totalLines: number;
-    uniqueAccountCount: number;
-    uniqueVoucherCount: number;
-    monthlyDensity: { month: number; count: number; volume: number }[];
-    topAccounts: { code: string; name: string; count: number; volume: number }[];
-    mizan: AccountDetail[];
-    totalDebit: number;
-    totalCredit: number;
-    complexityScore: number;
-    keyAccounts: Record<string, { count: number; volume: number }>;
-    // NEW averages
-    avgUniqueAccounts: number;
-    avgUniqueVouchers: number;
-    debugMeta?: {
-        headerRowIndex: number;
-        detectedColumns: Record<string, number>;
-        successRate: string;
-        fileName: string;
-        dateMethod?: string;
-        sampleDates?: string[];
-        parsedDateCount?: number;
-    };
-}
 
 export const parseKebirFile = async (file: File): Promise<KebirAnalysisResult> => {
     return new Promise((resolve, reject) => {

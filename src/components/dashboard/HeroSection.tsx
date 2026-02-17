@@ -22,7 +22,7 @@ export default function HeroSection({ onStart }: HeroSectionProps) {
 
                     <div>
                         <h1 className="text-4xl lg:text-5xl font-black text-white leading-tight tracking-tight mb-4">
-                            KDV Kontrol PRO <br />
+                            NG NET SMMM AI <br />
                             <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-cyan-300">
                                 Muhasebenizi Otomatize Edin.
                             </span>

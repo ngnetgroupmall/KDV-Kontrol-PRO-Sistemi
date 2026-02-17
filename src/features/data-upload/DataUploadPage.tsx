@@ -4,6 +4,22 @@ import { useCompany } from '../../context/CompanyContext';
 import { Card } from '../../components/common/Card';
 import { Button } from '../../components/common/Button';
 import { parseKebirFile } from '../kebir-analysis/utils/kebirParser';
+import { MappingStep } from '../reconciliation/components/MappingStep';
+import {
+    processEInvoiceFile,
+    processAccountingFile,
+    processAccountingMatrahFile
+} from '../reconciliation/services/excelProcessor';
+import {
+    SALES_EINVOICE_FIELDS,
+    PURCHASE_EINVOICE_FIELDS,
+    SALES_ACCOUNTING_VAT_FIELDS,
+    PURCHASE_ACCOUNTING_VAT_FIELDS,
+    ACCOUNTING_MATRAH_FIELDS
+} from '../reconciliation/utils/constants';
+import type { EInvoiceRow, AccountingRow, AccountingMatrahRow } from '../../types';
+import type { ExcelProcessResult } from '../reconciliation/services/excelProcessor';
+import type { VoucherEditSource } from '../common/types';
 
 const EXCEL_ACCEPT = '.xlsx,.xls';
 
@@ -20,6 +36,8 @@ interface UploadPanelProps {
     files: File[];
     multiple?: boolean;
     onSelect: (files: File[]) => void;
+    onProcess?: (file: File) => void;
+    isProcessed?: boolean;
 }
 
 function UploadPanel({
@@ -28,6 +46,8 @@ function UploadPanel({
     files,
     multiple = false,
     onSelect,
+    onProcess,
+    isProcessed = false,
 }: UploadPanelProps) {
     const inputRef = useRef<HTMLInputElement>(null);
 
@@ -38,20 +58,43 @@ function UploadPanel({
     };
 
     return (
-        <div className="rounded-xl border border-slate-700 bg-slate-900/40 p-4 space-y-3">
+        <div className="rounded-xl border border-slate-700 bg-slate-900/40 p-4 space-y-3 relative overflow-hidden">
+            {isProcessed && (
+                <div className="absolute top-0 right-0 p-2">
+                    <div className="bg-emerald-500/10 text-emerald-400 text-xs px-2 py-1 rounded-full border border-emerald-500/20 flex items-center gap-1">
+                        <CheckCircle2 size={12} />
+                        <span>İşlendi</span>
+                    </div>
+                </div>
+            )}
             <div>
                 <h3 className="text-sm font-semibold text-white">{title}</h3>
                 <p className="text-xs text-slate-400 mt-1">{description}</p>
             </div>
 
-            <Button
-                variant="secondary"
-                size="sm"
-                leftIcon={<Upload size={14} />}
-                onClick={() => inputRef.current?.click()}
-            >
-                {multiple ? 'Dosyalari sec' : 'Dosya sec'}
-            </Button>
+            <div className="flex gap-2">
+                <Button
+                    variant="secondary"
+                    size="sm"
+                    className="flex-1"
+                    leftIcon={<Upload size={14} />}
+                    onClick={() => inputRef.current?.click()}
+                >
+                    {multiple ? 'Dosyaları Seç' : 'Dosya Seç'}
+                </Button>
+
+                {onProcess && files.length > 0 && !isProcessed && (
+                    <Button
+                        variant="primary"
+                        size="sm"
+                        className="px-3"
+                        onClick={() => onProcess(files[0])}
+                        title="Dosyayı İşle"
+                    >
+                        İşle
+                    </Button>
+                )}
+            </div>
 
             <input
                 ref={inputRef}
@@ -104,7 +147,22 @@ export default function DataUploadPage() {
         }));
     };
 
-    const setCurrentAccountFile = (key: 'smmmFile' | 'firmaFile', file: File | null) => {
+    const clearVoucherEditLogsBySource = async (source: VoucherEditSource) => {
+        await patchActiveCompany((company) => {
+            const currentAccount = company.currentAccount;
+            if (!currentAccount) return {};
+
+            const nextLogs = (currentAccount.voucherEditLogs || []).filter((log) => log.source !== source);
+            return {
+                currentAccount: {
+                    ...currentAccount,
+                    voucherEditLogs: nextLogs,
+                },
+            };
+        });
+    };
+
+    const setCurrentAccountFile = async (key: 'smmmFile' | 'firmaFile', file: File | null) => {
         setActiveUploads((current) => ({
             ...current,
             currentAccount: {
@@ -112,6 +170,20 @@ export default function DataUploadPage() {
                 [key]: file,
             },
         }));
+
+        if (!file || !activeCompany) return;
+
+        const source: VoucherEditSource = key === 'firmaFile' ? 'FIRMA' : 'SMMM';
+        const sourceLabel = source === 'FIRMA' ? 'Firma' : 'SMMM';
+        const hasSourceLogs = (activeCompany.currentAccount?.voucherEditLogs || []).some((log) => log.source === source);
+        if (!hasSourceLogs) return;
+
+        const shouldClear = window.confirm(
+            `${sourceLabel} kaynaginda kayitli fis duzenleme gecmisi var. Yeni dosya yuklenirken bu kayitlar silinsin mi?`
+        );
+        if (!shouldClear) return;
+
+        await clearVoucherEditLogsBySource(source);
     };
 
     const handleKebirUpload = async (file: File | null) => {
@@ -139,6 +211,99 @@ export default function DataUploadPage() {
         } finally {
             setKebirLoading(false);
         }
+    };
+
+    // State for processing
+    const [processingState, setProcessingState] = useState<{
+        type: 'EINVOICE' | 'ACCOUNTING' | 'ACCOUNTING_MATRAH' | null;
+        file: File | null;
+        mode: 'SALES' | 'PURCHASE'; // Defaulting to SALES for now, maybe add a toggle later
+    }>({ type: null, file: null, mode: 'SALES' });
+
+    const [isProcessingModalOpen, setIsProcessingModalOpen] = useState(false);
+
+    const handleProcessClick = (
+        type: 'EINVOICE' | 'ACCOUNTING' | 'ACCOUNTING_MATRAH',
+        file: File
+    ) => {
+        setProcessingState({ type, file, mode: 'SALES' }); // Default to Sales for now
+        setIsProcessingModalOpen(true);
+    };
+
+    const handleMappingComplete = async (mapping: Record<string, string>, headerRowIndex: number) => {
+        const { file, type, mode } = processingState;
+        if (!file || !type) return;
+
+        setKebirLoading(true); // Reuse loading state or create a new one
+        setIsProcessingModalOpen(false);
+
+        try {
+
+            // let result; // Removing this to use scoped typed variables
+            if (type === 'EINVOICE') {
+                const result = await processEInvoiceFile(file, mapping, headerRowIndex, mode) as ExcelProcessResult<EInvoiceRow[]>;
+                if (result.success && result.data) {
+                    await patchActiveCompany((company) => {
+                        const currentData = company.reconciliation?.eInvoiceData || [];
+                        return {
+                            reconciliation: {
+                                ...company.reconciliation,
+                                eInvoiceData: [...currentData, ...result.data!]
+                            }
+                        };
+                    });
+                }
+            } else if (type === 'ACCOUNTING') {
+                const result = await processAccountingFile(file, mapping, headerRowIndex, mode) as ExcelProcessResult<AccountingRow[]>;
+                if (result.success && result.data) {
+                    await patchActiveCompany((company) => {
+                        const currentData = company.reconciliation?.accountingData || [];
+                        return {
+                            reconciliation: {
+                                ...company.reconciliation,
+                                accountingData: [...currentData, ...result.data!]
+                            }
+                        };
+                    });
+                }
+            } else if (type === 'ACCOUNTING_MATRAH') {
+                const result = await processAccountingMatrahFile(file, mapping, headerRowIndex) as ExcelProcessResult<AccountingMatrahRow[]>;
+                if (result.success && result.data) {
+                    await patchActiveCompany((company) => {
+                        const currentData = company.reconciliation?.accountingMatrahData || [];
+                        return {
+                            reconciliation: {
+                                ...company.reconciliation,
+                                accountingMatrahData: [...currentData, ...result.data!]
+                            }
+                        };
+                    });
+                }
+            }
+
+            // Error handling moved to individual blocks or use a shared error var if needed
+            // For now, simplifiying to avoid "result used before assigned" complexity with different types
+
+
+        } catch (error) {
+            console.error('Processing error:', error);
+            alert('İşlem sırasında bir hata oluştu.');
+        } finally {
+            setKebirLoading(false);
+            setProcessingState({ type: null, file: null, mode: 'SALES' });
+        }
+    };
+
+    const getCanonicalFields = () => {
+        const { type, mode } = processingState;
+        if (type === 'EINVOICE') {
+            return mode === 'SALES' ? SALES_EINVOICE_FIELDS : PURCHASE_EINVOICE_FIELDS;
+        } else if (type === 'ACCOUNTING') {
+            return mode === 'SALES' ? SALES_ACCOUNTING_VAT_FIELDS : PURCHASE_ACCOUNTING_VAT_FIELDS;
+        } else if (type === 'ACCOUNTING_MATRAH') {
+            return ACCOUNTING_MATRAH_FIELDS;
+        }
+        return [];
     };
 
     const resetCompanyData = async () => {
@@ -202,24 +367,30 @@ export default function DataUploadPage() {
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <UploadPanel
                         title="E-Fatura listeleri"
-                        description="Satis/alis kontrolu icin e-fatura listelerini secin."
+                        description="Satış/alış kontrolü için e-fatura listelerini seçin."
                         files={activeUploads.reconciliation.eInvoiceFiles}
                         multiple
                         onSelect={(files) => setReconciliationFiles('eInvoiceFiles', files)}
+                        onProcess={(file) => handleProcessClick('EINVOICE', file)}
+                        isProcessed={(activeCompany.reconciliation?.eInvoiceData || []).length > 0}
                     />
                     <UploadPanel
                         title="Muhasebe KDV"
-                        description="191/391 tarafindaki muhasebe KDV dosyalarini secin."
+                        description="191/391 tarafındaki muhasebe KDV dosyalarını seçin."
                         files={activeUploads.reconciliation.accountingFiles}
                         multiple
                         onSelect={(files) => setReconciliationFiles('accountingFiles', files)}
+                        onProcess={(file) => handleProcessClick('ACCOUNTING', file)}
+                        isProcessed={(activeCompany.reconciliation?.accountingData || []).length > 0}
                     />
                     <UploadPanel
                         title="Muhasebe Matrah"
-                        description="Satis modulu icin matrah dosyalarini secin."
+                        description="Satış modülü için matrah dosyalarını seçin."
                         files={activeUploads.reconciliation.accountingMatrahFiles}
                         multiple
                         onSelect={(files) => setReconciliationFiles('accountingMatrahFiles', files)}
+                        onProcess={(file) => handleProcessClick('ACCOUNTING_MATRAH', file)}
+                        isProcessed={(activeCompany.reconciliation?.accountingMatrahData || []).length > 0}
                     />
                 </div>
             </Card>
@@ -234,13 +405,17 @@ export default function DataUploadPage() {
                         title="SMMM Kebir dosyasi"
                         description="SMMM tarafindan gelen tek dosya secilir."
                         files={smmmFiles}
-                        onSelect={(files) => setCurrentAccountFile('smmmFile', files[0] || null)}
+                        onSelect={(files) => {
+                            void setCurrentAccountFile('smmmFile', files[0] || null);
+                        }}
                     />
                     <UploadPanel
                         title="Firma Kebir dosyasi"
                         description="Firma tarafindan gelen tek dosya secilir."
                         files={firmaFiles}
-                        onSelect={(files) => setCurrentAccountFile('firmaFile', files[0] || null)}
+                        onSelect={(files) => {
+                            void setCurrentAccountFile('firmaFile', files[0] || null);
+                        }}
                     />
                 </div>
             </Card>
@@ -276,6 +451,36 @@ export default function DataUploadPage() {
                     </div>
                 )}
             </Card>
-        </div>
+
+
+            {/* Processing Modal */}
+            {
+                isProcessingModalOpen && processingState.file && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in">
+                        <div className="w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+                            <div className="bg-slate-900 rounded-2xl border border-slate-700 shadow-2xl overflow-hidden">
+                                <div className="p-4 border-b border-slate-800 flex justify-between items-center bg-slate-900/50">
+                                    <h3 className="text-lg font-bold text-white">Veri İşleme Sihirbazı</h3>
+                                    <button
+                                        onClick={() => setIsProcessingModalOpen(false)}
+                                        className="text-slate-400 hover:text-white transition-colors"
+                                    >
+                                        Kapat
+                                    </button>
+                                </div>
+                                <div className="p-1">
+                                    <MappingStep
+                                        file={processingState.file}
+                                        canonicalFields={getCanonicalFields()}
+                                        onComplete={handleMappingComplete}
+                                        onCancel={() => setIsProcessingModalOpen(false)}
+                                    />
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )
+            }
+        </div >
     );
 }

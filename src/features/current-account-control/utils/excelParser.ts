@@ -68,6 +68,13 @@ const getAccountPrefix = (accountCode: string): string => accountCode.replace(/\
 
 const isTargetAccount = (accountCode: string): boolean => TARGET_PREFIXES.has(getAccountPrefix(accountCode));
 
+const toValidCalendarDate = (year: number, month: number, day: number): Date | null => {
+    const date = new Date(year, month - 1, day, 12, 0, 0, 0);
+    if (Number.isNaN(date.getTime())) return null;
+    if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) return null;
+    return date;
+};
+
 const parseDate = (value: any): Date | null => {
     if (value === null || value === undefined || value === '') return null;
 
@@ -76,20 +83,42 @@ const parseDate = (value: any): Date | null => {
     }
 
     if (typeof value === 'number') {
-        const date = new Date(Math.round((value - 25569) * 86400 * 1000));
+        const excelEpochUtc = Date.UTC(1899, 11, 30);
+        const date = new Date(excelEpochUtc + Math.round(value * 86400 * 1000));
         return Number.isNaN(date.getTime()) ? null : date;
     }
 
     const raw = String(value).trim();
     if (!raw) return null;
 
-    const ddMmYyyy = raw.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{2,4})$/);
+    const ddMmYyyy = raw.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{2,4})(?:\D.*)?$/);
     if (ddMmYyyy) {
         const year = ddMmYyyy[3].length === 2 ? Number(`20${ddMmYyyy[3]}`) : Number(ddMmYyyy[3]);
-        const month = Number(ddMmYyyy[2]) - 1;
+        const month = Number(ddMmYyyy[2]);
         const day = Number(ddMmYyyy[1]);
-        const date = new Date(year, month, day);
-        return Number.isNaN(date.getTime()) ? null : date;
+        const date = toValidCalendarDate(year, month, day);
+        if (date) return date;
+    }
+
+    const yyyyMmDd = raw.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:[T\s].*)?$/);
+    if (yyyyMmDd) {
+        const year = Number(yyyyMmDd[1]);
+        const month = Number(yyyyMmDd[2]);
+        const day = Number(yyyyMmDd[3]);
+        const date = toValidCalendarDate(year, month, day);
+        if (date) return date;
+    }
+
+    const serialLike = raw.replace(',', '.');
+    if (/^\d{4,6}(?:\.\d+)?$/.test(serialLike)) {
+        const serial = Number(serialLike);
+        if (Number.isFinite(serial) && serial > 20000 && serial < 80000) {
+            const excelEpochUtc = Date.UTC(1899, 11, 30);
+            const date = new Date(excelEpochUtc + Math.round(serial * 86400 * 1000));
+            if (!Number.isNaN(date.getTime())) {
+                return date;
+            }
+        }
     }
 
     const parsed = new Date(raw);
