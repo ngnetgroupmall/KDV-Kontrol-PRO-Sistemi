@@ -58,7 +58,7 @@ export default function App() {
   );
 
   return (
-    <AppShell activeTab={activeTab} onTabChange={handleTabChange} version="1.6.10">
+    <AppShell activeTab={activeTab} onTabChange={handleTabChange} version="1.6.18">
       {state.loading && (
         <div className="fixed inset-0 bg-[var(--bg-dark)]/80 backdrop-blur-md z-[100] flex flex-col items-center justify-center gap-6 animate-fade-in">
           <div className="relative">
