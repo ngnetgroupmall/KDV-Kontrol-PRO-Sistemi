@@ -105,6 +105,43 @@ export interface KebirAnalysisResult {
     processingTime?: number;
 }
 
+export interface FaturaXmlLineItem {
+    itemName: string;
+    quantity: number | string;
+    unitPrice: number | string;
+    taxPercent: number | string;
+    taxAmount: number | string;
+    lineTotal: number | string;
+}
+
+export interface FaturaXmlInvoice {
+    id: string;
+    invNo: string;
+    invDate: string;
+    companyName: string;
+    supplierName: string;
+    supplierVN: string;
+    customerName: string;
+    customerVN: string;
+    taxExclusiveAmount: number | string;
+    taxAmount: number | string;
+    taxInclusiveAmount: number | string;
+    currency: string;
+    totalAmountLabel: string;
+    lines: FaturaXmlLineItem[];
+}
+
+export type FaturaXmlExcelRow = Record<string, string | number | null>;
+
+export interface FaturaXmlModuleData {
+    sourceFileName: string;
+    processedAt: string;
+    invoiceCount: number;
+    itemCount: number;
+    invoices: FaturaXmlInvoice[];
+    excelRows: FaturaXmlExcelRow[];
+}
+
 
 
 export interface Company {
@@ -149,4 +186,6 @@ export interface Company {
         };
         [key: string]: unknown;
     };
+
+    faturaXml?: FaturaXmlModuleData;
 }

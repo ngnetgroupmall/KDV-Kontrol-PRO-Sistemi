@@ -1,4 +1,4 @@
-import { LayoutDashboard, Upload, LifeBuoy, Settings, ChevronLeft, ChevronRight, PieChart, FileSpreadsheet, Database, Scale, Calculator, FileClock, FileText } from 'lucide-react';
+import { LayoutDashboard, Upload, LifeBuoy, Settings, ChevronLeft, ChevronRight, PieChart, FileSpreadsheet, Database, Scale, Calculator, FileClock, FileText, FileArchive } from 'lucide-react';
 import { cn } from '../common/Button';
 import logo from '../../assets/logo.png';
 
@@ -14,6 +14,7 @@ export default function Sidebar({ activeTab, onTabChange, version, isCollapsed, 
     const menuItems = [
         { id: 'dashboard', label: 'Genel Bakis', icon: LayoutDashboard },
         { id: 'data-upload', label: 'Veri Yukleme', icon: Database },
+        { id: 'fatura-xml', label: 'Fatura XML', icon: FileArchive },
         { id: 'kdv-control', label: 'KDV Kontrol', icon: Upload },
         { id: 'kebir', label: 'Kebir Analizi', icon: PieChart },
         { id: 'mizan', label: 'Mizan', icon: Scale },

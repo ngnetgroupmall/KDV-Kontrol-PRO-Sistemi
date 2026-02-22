@@ -10,6 +10,7 @@ const ReconciliationWizard = lazy(async () => {
   return { default: module.ReconciliationWizard };
 });
 const DataUploadPage = lazy(() => import('./features/data-upload/DataUploadPage'));
+const FaturaXmlPage = lazy(() => import('./features/fatura-xml/FaturaXmlPage'));
 const KebirAnalysisPage = lazy(() => import('./features/kebir-analysis/components/KebirAnalysisPage'));
 const MizanPage = lazy(() => import('./features/mizan/MizanPage'));
 const TemporaryTaxPage = lazy(() => import('./features/temporary-tax/TemporaryTaxPage'));
@@ -131,6 +132,12 @@ export default function App() {
       {activeTab === 'data-upload' && (
         <Suspense fallback={lazyFallback}>
           <DataUploadPage />
+        </Suspense>
+      )}
+
+      {activeTab === 'fatura-xml' && (
+        <Suspense fallback={lazyFallback}>
+          <FaturaXmlPage />
         </Suspense>
       )}
 
