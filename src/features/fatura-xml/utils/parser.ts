@@ -19,7 +19,7 @@ interface ArchiveApi {
 
 let archiveApiPromise: Promise<ArchiveApi> | null = null;
 
-const resolveArchiveModuleUrl = (): string => {
+const resolveAssetUrl = (assetPath: string): string => {
     const baseUri =
         typeof document !== 'undefined'
             ? document.baseURI
@@ -28,11 +28,15 @@ const resolveArchiveModuleUrl = (): string => {
               : '';
 
     if (!baseUri) {
-        return './fatura-xml/libarchive.patched.js';
+        return `./${assetPath}`;
     }
 
-    return new URL('fatura-xml/libarchive.patched.js', baseUri).toString();
+    return new URL(assetPath, baseUri).toString();
 };
+
+const resolveArchiveModuleUrl = (): string => resolveAssetUrl('fatura-xml/libarchive.js');
+
+const resolveArchiveWorkerUrl = (): string => resolveAssetUrl('fatura-xml/worker-bundle.js');
 
 export type ParsePhase = 'reading' | 'parsing' | 'excel' | 'done';
 
@@ -210,7 +214,7 @@ const getArchiveApi = async (): Promise<ArchiveApi> => {
             if (!archive?.open || !archive?.init) {
                 throw new Error('libarchive modulu yuklenemedi.');
             }
-            archive.init();
+            archive.init({ workerUrl: resolveArchiveWorkerUrl() });
             return archive;
         });
     }

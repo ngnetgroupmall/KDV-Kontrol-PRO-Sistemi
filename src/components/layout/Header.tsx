@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Search, Bell, ChevronDown, User, Monitor, Plus, Check } from 'lucide-react';
+import { ChevronDown, Monitor, Plus, Check, Pencil, Trash2 } from 'lucide-react';
 import { useCompany } from '../../context/CompanyContext';
 import { cn } from '../common/Button';
 
@@ -8,10 +8,13 @@ interface HeaderProps {
 }
 
 export default function Header({ isSidebarCollapsed }: HeaderProps) {
-    const { companies, activeCompany, selectCompany, createCompany } = useCompany();
+    const { companies, activeCompany, selectCompany, createCompany, updateCompany, deleteCompany } = useCompany();
     const [isCompanyMenuOpen, setIsCompanyMenuOpen] = useState(false);
     const [isCreating, setIsCreating] = useState(false);
     const [newCompanyName, setNewCompanyName] = useState('');
+    const [editingId, setEditingId] = useState<string | null>(null);
+    const [editingName, setEditingName] = useState('');
+    const [deletingId, setDeletingId] = useState<string | null>(null);
     const menuRef = useRef<HTMLDivElement>(null);
 
     // Close menu when clicking outside
@@ -20,6 +23,8 @@ export default function Header({ isSidebarCollapsed }: HeaderProps) {
             if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
                 setIsCompanyMenuOpen(false);
                 setIsCreating(false);
+                setEditingId(null);
+                setDeletingId(null);
             }
         }
         document.addEventListener("mousedown", handleClickOutside);
@@ -34,9 +39,31 @@ export default function Header({ isSidebarCollapsed }: HeaderProps) {
             setIsCreating(false);
             setIsCompanyMenuOpen(false);
         } catch (error) {
-            console.error('Firma olusturulamadi:', error);
-            const message = error instanceof Error ? error.message : 'Firma olusturulurken bir hata olustu.';
+            console.error('Firma oluşturulamadı:', error);
+            const message = error instanceof Error ? error.message : 'Firma oluşturulurken bir hata oluştu.';
             alert(message);
+        }
+    };
+
+    const handleRenameCompany = async (id: string) => {
+        if (!editingName.trim()) return;
+        const company = companies.find(c => c.id === id);
+        if (!company) return;
+        try {
+            await updateCompany({ ...company, name: editingName.trim(), updatedAt: new Date() });
+            setEditingId(null);
+            setEditingName('');
+        } catch (error) {
+            console.error('Firma adı güncellenemedi:', error);
+        }
+    };
+
+    const handleDeleteCompany = async (id: string) => {
+        try {
+            await deleteCompany(id);
+            setDeletingId(null);
+        } catch (error) {
+            console.error('Firma silinemedi:', error);
         }
     };
 
@@ -68,25 +95,65 @@ export default function Header({ isSidebarCollapsed }: HeaderProps) {
 
                 {/* Dropdown Menu */}
                 {isCompanyMenuOpen && (
-                    <div className="absolute top-full left-0 mt-2 w-72 bg-slate-900 border border-slate-700/80 rounded-xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-top-2 z-50">
+                    <div className="absolute top-full left-0 mt-2 w-80 bg-slate-900 border border-slate-700/80 rounded-xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-top-2 z-50">
                         <div className="p-3 border-b border-slate-800">
                             <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 px-2">Firmalarım</h3>
                             <div className="max-h-60 overflow-y-auto space-y-1">
                                 {companies.map(company => (
-                                    <button
-                                        key={company.id}
-                                        onClick={() => {
-                                            selectCompany(company.id);
-                                            setIsCompanyMenuOpen(false);
-                                        }}
-                                        className={`w-full text-left px-3 py-2 rounded-lg text-sm flex items-center justify-between group transition-colors ${activeCompany?.id === company.id
-                                                ? 'bg-blue-600 text-white'
-                                                : 'text-slate-300 hover:bg-slate-800 hover:text-white'
-                                            }`}
-                                    >
-                                        <span className="truncate">{company.name}</span>
-                                        {activeCompany?.id === company.id && <Check size={14} />}
-                                    </button>
+                                    <div key={company.id} className="group">
+                                        {editingId === company.id ? (
+                                            <div className="flex items-center gap-2 px-2 py-1">
+                                                <input
+                                                    type="text"
+                                                    autoFocus
+                                                    value={editingName}
+                                                    onChange={(e) => setEditingName(e.target.value)}
+                                                    onKeyDown={(e) => e.key === 'Enter' && handleRenameCompany(company.id)}
+                                                    className="flex-1 bg-slate-800 border border-slate-600 rounded-lg px-2 py-1 text-sm text-white focus:outline-none focus:border-blue-500"
+                                                />
+                                                <button onClick={() => handleRenameCompany(company.id)} className="text-green-400 hover:text-green-300 p-1"><Check size={14} /></button>
+                                                <button onClick={() => setEditingId(null)} className="text-slate-400 hover:text-white p-1 text-xs">İptal</button>
+                                            </div>
+                                        ) : deletingId === company.id ? (
+                                            <div className="flex items-center gap-2 px-3 py-2 bg-red-500/10 rounded-lg">
+                                                <p className="flex-1 text-xs text-red-300">Silmek istediğinize emin misiniz?</p>
+                                                <button onClick={() => handleDeleteCompany(company.id)} className="text-xs text-red-400 hover:text-red-300 font-bold">Evet</button>
+                                                <button onClick={() => setDeletingId(null)} className="text-xs text-slate-400 hover:text-white font-bold">Hayır</button>
+                                            </div>
+                                        ) : (
+                                            <div className="flex items-center">
+                                                <button
+                                                    onClick={() => {
+                                                        selectCompany(company.id);
+                                                        setIsCompanyMenuOpen(false);
+                                                    }}
+                                                    className={`flex-1 text-left px-3 py-2 rounded-lg text-sm flex items-center justify-between group transition-colors ${activeCompany?.id === company.id
+                                                        ? 'bg-blue-600 text-white'
+                                                        : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                                                        }`}
+                                                >
+                                                    <span className="truncate">{company.name}</span>
+                                                    {activeCompany?.id === company.id && <Check size={14} />}
+                                                </button>
+                                                <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity ml-1">
+                                                    <button
+                                                        onClick={(e) => { e.stopPropagation(); setEditingId(company.id); setEditingName(company.name); }}
+                                                        className="p-1.5 rounded hover:bg-slate-700 text-slate-500 hover:text-blue-400 transition-colors"
+                                                        title="Yeniden adlandır"
+                                                    >
+                                                        <Pencil size={12} />
+                                                    </button>
+                                                    <button
+                                                        onClick={(e) => { e.stopPropagation(); setDeletingId(company.id); }}
+                                                        className="p-1.5 rounded hover:bg-slate-700 text-slate-500 hover:text-red-400 transition-colors"
+                                                        title="Sil"
+                                                    >
+                                                        <Trash2 size={12} />
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
                                 ))}
                                 {companies.length === 0 && (
                                     <p className="text-slate-500 text-sm px-2 py-1">Kayıtlı firma bulunmuyor.</p>
@@ -136,37 +203,9 @@ export default function Header({ isSidebarCollapsed }: HeaderProps) {
                 )}
             </div>
 
-            {/* Right Actions */}
-            <div className="flex items-center gap-4">
-                {/* Search */}
-                <div className="relative hidden md:block group mr-2">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 w-4 h-4 group-focus-within:text-blue-400 transition-colors" />
-                    <input
-                        type="text"
-                        placeholder="İşlem veya fatura ara..."
-                        className="bg-slate-900/50 border border-slate-700 text-slate-200 text-sm rounded-lg pl-10 pr-4 py-2 w-64 focus:outline-none focus:border-blue-500 transition-all placeholder:text-slate-600"
-                    />
-                </div>
-
-                {/* Notifications */}
-                <button className="relative p-2 rounded-lg hover:bg-white/5 text-slate-400 hover:text-white transition-colors">
-                    <Bell size={20} />
-                    <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border-2 border-[var(--bg-dark)]" />
-                </button>
-
-                <div className="h-6 w-px bg-slate-800 mx-2"></div>
-
-                {/* Profile */}
-                <div className="flex items-center gap-3 cursor-pointer hover:bg-white/5 p-2 rounded-lg transition-colors">
-                    <div className="w-9 h-9 rounded-lg bg-blue-600/10 flex items-center justify-center border border-blue-600/20 text-blue-500">
-                        <User size={18} />
-                    </div>
-                    <div className="text-right hidden lg:block">
-                        <p className="text-sm font-bold text-white leading-none mb-1">Admin User</p>
-                        <p className="text-[10px] text-slate-500 font-mono">Standart Lisans</p>
-                    </div>
-                    <ChevronDown size={14} className="text-slate-500" />
-                </div>
+            {/* Right: App name badge only — cleaned up */}
+            <div className="flex items-center gap-3">
+                <span className="text-xs text-slate-500 font-mono">NG NET SMMM AI</span>
             </div>
         </header>
     );

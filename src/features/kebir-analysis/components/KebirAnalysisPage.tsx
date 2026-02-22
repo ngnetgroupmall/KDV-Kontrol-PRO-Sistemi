@@ -2,8 +2,9 @@ import { useState, useEffect } from 'react';
 import { parseKebirFile } from '../utils/kebirParser';
 import UploadSection from './UploadSection';
 import AnalysisDashboard from './AnalysisDashboard';
-import { AlertCircle, Layers } from 'lucide-react';
+import { AlertCircle } from 'lucide-react';
 import { useCompany } from '../../../context/CompanyContext';
+import NoCompanySelected from '../../../components/common/NoCompanySelected';
 
 export default function KebirAnalysisPage() {
     const { activeCompany, patchActiveCompany, setActiveUploads } = useCompany();
@@ -63,17 +64,7 @@ export default function KebirAnalysisPage() {
     };
 
     if (!activeCompany) {
-        return (
-            <div className="flex flex-col items-center justify-center h-[60vh] text-center animate-fade-in">
-                <div className="w-24 h-24 bg-slate-800 rounded-full flex items-center justify-center mb-6">
-                    <Layers className="text-slate-600 w-12 h-12" />
-                </div>
-                <h2 className="text-2xl font-bold text-white mb-2">Firma Seçimi Gerekli</h2>
-                <p className="text-slate-400 max-w-md">
-                    Kebir analizi yapmak için lütfen sağ üst köşeden bir firma seçin veya yeni bir firma oluşturun.
-                </p>
-            </div>
-        );
+        return <NoCompanySelected moduleName="Kebir Analizi" />;
     }
 
     return (

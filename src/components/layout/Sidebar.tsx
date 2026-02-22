@@ -1,4 +1,4 @@
-import { LayoutDashboard, Upload, LifeBuoy, Settings, ChevronLeft, ChevronRight, PieChart, FileSpreadsheet, Database, Scale, Calculator, FileClock, FileText, FileArchive } from 'lucide-react';
+import { LayoutDashboard, ClipboardCheck, LifeBuoy, Settings, ChevronLeft, ChevronRight, PieChart, FileSpreadsheet, Database, Scale, Calculator, FileClock, FileText, FileArchive } from 'lucide-react';
 import { cn } from '../common/Button';
 import logo from '../../assets/logo.png';
 
@@ -12,15 +12,15 @@ interface SidebarProps {
 
 export default function Sidebar({ activeTab, onTabChange, version, isCollapsed, onCollapse }: SidebarProps) {
     const menuItems = [
-        { id: 'dashboard', label: 'Genel Bakis', icon: LayoutDashboard },
-        { id: 'data-upload', label: 'Veri Yukleme', icon: Database },
+        { id: 'dashboard', label: 'Genel Bakış', icon: LayoutDashboard },
+        { id: 'data-upload', label: 'Veri Yükleme', icon: Database },
         { id: 'fatura-xml', label: 'Fatura XML', icon: FileArchive },
-        { id: 'kdv-control', label: 'KDV Kontrol', icon: Upload },
+        { id: 'kdv-control', label: 'KDV Kontrol', icon: ClipboardCheck },
         { id: 'kebir', label: 'Kebir Analizi', icon: PieChart },
         { id: 'mizan', label: 'Mizan', icon: Scale },
-        { id: 'temporary-tax', label: 'Gecici Vergi', icon: Calculator },
-        { id: 'voucher-edit-report', label: 'Fis Duzenleme Raporu', icon: FileClock },
-        { id: 'voucher-list', label: 'Fis Listesi', icon: FileText },
+        { id: 'temporary-tax', label: 'Geçici Vergi', icon: Calculator },
+        { id: 'voucher-edit-report', label: 'Fiş Düzenleme Raporu', icon: FileClock },
+        { id: 'voucher-list', label: 'Fiş Listesi', icon: FileText },
         { id: 'current-account', label: 'Cari Hesap Kontrol', icon: FileSpreadsheet },
     ];
 
@@ -47,7 +47,7 @@ export default function Sidebar({ activeTab, onTabChange, version, isCollapsed, 
             </div>
 
             <div className="flex-1 py-6 flex flex-col gap-1 overflow-y-auto overflow-x-hidden">
-                {!isCollapsed && <p className="px-6 text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 animate-fade-in">Ana Menu</p>}
+                {!isCollapsed && <p className="px-6 text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 animate-fade-in">Ana Menü</p>}
 
                 {menuItems.map((item) => (
                     <button
@@ -103,7 +103,7 @@ export default function Sidebar({ activeTab, onTabChange, version, isCollapsed, 
                 <div className={cn("flex items-center gap-3", isCollapsed ? "justify-center" : "")}>
                     <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
                     <div className={cn("transition-opacity duration-300", isCollapsed ? "hidden" : "block")}>
-                        <p className="text-xs font-bold text-slate-300 whitespace-nowrap">Sistem Cevrimici</p>
+                        <p className="text-xs font-bold text-slate-300 whitespace-nowrap">Sistem Çevrimiçi</p>
                         <p className="text-[10px] text-slate-500 font-mono mt-0.5">v{version}</p>
                     </div>
                 </div>
