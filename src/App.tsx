@@ -5,6 +5,7 @@ import HeroSection from './components/dashboard/HeroSection';
 import FeatureCards from './components/dashboard/FeatureCards';
 import CommandPalette from './components/common/CommandPalette';
 import CompanyStatusCard from './components/dashboard/CompanyStatusCard';
+import RecentActivity from './components/dashboard/RecentActivity';
 import { useReconciliation } from './features/reconciliation/hooks/useReconciliation';
 import { useCompany } from './context/CompanyContext';
 
@@ -125,7 +126,12 @@ export default function App() {
       {activeTab === 'dashboard' && (
         <div className="space-y-8 animate-fade-in">
           <HeroSection onStart={handleStart} />
-          {activeCompany && <CompanyStatusCard />}
+          {activeCompany && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <CompanyStatusCard />
+              <RecentActivity />
+            </div>
+          )}
           <FeatureCards onAction={(id) => {
             if (id === 'upload') handleTabChange('data-upload');
             else if (id === 'sales') handleStart('SALES');

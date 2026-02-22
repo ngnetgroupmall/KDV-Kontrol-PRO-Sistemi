@@ -3,6 +3,7 @@ import { AlertCircle, CheckCircle2, FileSpreadsheet, Layers, RefreshCcw, Upload 
 import { useCompany } from '../../context/CompanyContext';
 import { Card } from '../../components/common/Card';
 import { Button } from '../../components/common/Button';
+import NoCompanySelected from '../../components/common/NoCompanySelected';
 import { parseKebirFile } from '../kebir-analysis/utils/kebirParser';
 import { MappingStep } from '../reconciliation/components/MappingStep';
 import {
@@ -107,7 +108,7 @@ function UploadPanel({
 
             <div className="space-y-1">
                 {files.length === 0 && (
-                    <p className="text-xs text-slate-500">Yuklenen dosya yok.</p>
+                    <p className="text-xs text-slate-500">Yüklenen dosya yok.</p>
                 )}
                 {files.map((file) => (
                     <div
@@ -133,6 +134,7 @@ export default function DataUploadPage() {
     } = useCompany();
     const [kebirError, setKebirError] = useState<string | null>(null);
     const [kebirLoading, setKebirLoading] = useState(false);
+    const [activeUploadTab, setActiveUploadTab] = useState<'kdv' | 'cari' | 'kebir'>('kdv');
 
     const setReconciliationFiles = (
         key: 'eInvoiceFiles' | 'accountingFiles' | 'accountingMatrahFiles',
@@ -179,7 +181,7 @@ export default function DataUploadPage() {
         if (!hasSourceLogs) return;
 
         const shouldClear = window.confirm(
-            `${sourceLabel} kaynaginda kayitli fis duzenleme gecmisi var. Yeni dosya yuklenirken bu kayitlar silinsin mi?`
+            `${sourceLabel} kaynağında kayıtlı fiş düzenleme geçmişi var. Yeni dosya yüklenirken bu kayıtlar silinsin mi?`
         );
         if (!shouldClear) return;
 
@@ -207,7 +209,7 @@ export default function DataUploadPage() {
             }));
         } catch (error) {
             console.error('Kebir parse error:', error);
-            setKebirError(error instanceof Error ? error.message : 'Kebir dosyasi islenemedi.');
+            setKebirError(error instanceof Error ? error.message : 'Kebir dosyası işlenemedi.');
         } finally {
             setKebirLoading(false);
         }
@@ -317,17 +319,7 @@ export default function DataUploadPage() {
     };
 
     if (!activeCompany) {
-        return (
-            <div className="flex flex-col items-center justify-center h-[60vh] text-center animate-fade-in">
-                <div className="w-24 h-24 bg-slate-800 rounded-full flex items-center justify-center mb-6">
-                    <Layers className="text-slate-600 w-12 h-12" />
-                </div>
-                <h2 className="text-2xl font-bold text-white mb-2">Firma secimi gerekli</h2>
-                <p className="text-slate-400 max-w-md">
-                    Veri yuklemek icin lutfen once bir firma secin.
-                </p>
-            </div>
-        );
+        return <NoCompanySelected moduleName="Veri Yükleme" />;
     }
 
     const smmmFiles = activeUploads.currentAccount.smmmFile ? [activeUploads.currentAccount.smmmFile] : [];
@@ -338,9 +330,9 @@ export default function DataUploadPage() {
         <div className="space-y-6 animate-fade-in">
             <div className="flex items-center justify-between gap-4">
                 <div>
-                    <h1 className="text-3xl font-bold text-white mb-2">Veri Yukleme Merkezi</h1>
+                    <h1 className="text-3xl font-bold text-white mb-2">Veri Yükleme Merkezi</h1>
                     <p className="text-slate-400 text-sm">
-                        Bu ekrana yuklenen dosyalar firma bazli olarak tum modullerde kullanilir.
+                        Bu ekrana yüklenen dosyalar firma bazlı olarak tüm modüllerde kullanılır.
                     </p>
                     <p className="text-xs text-blue-300 mt-1">{activeCompany.name}</p>
                 </div>
@@ -350,107 +342,135 @@ export default function DataUploadPage() {
                     size="sm"
                     leftIcon={<RefreshCcw size={14} />}
                     onClick={() => {
-                        if (window.confirm('Firma verilerini sifirlamak istiyor musunuz?')) {
+                        if (window.confirm('Firma verilerini sıfırlamak istiyor musunuz?')) {
                             void resetCompanyData();
                         }
                     }}
                 >
-                    Firma verilerini sifirla
+                    Firma Verilerini Sıfırla
                 </Button>
             </div>
 
-            <Card className="space-y-4">
-                <div className="flex items-center gap-2">
-                    <FileSpreadsheet size={18} className="text-blue-400" />
-                    <h2 className="text-lg font-semibold text-white">KDV Mutabakat dosyalari</h2>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <UploadPanel
-                        title="E-Fatura listeleri"
-                        description="Satış/alış kontrolü için e-fatura listelerini seçin."
-                        files={activeUploads.reconciliation.eInvoiceFiles}
-                        multiple
-                        onSelect={(files) => setReconciliationFiles('eInvoiceFiles', files)}
-                        onProcess={(file) => handleProcessClick('EINVOICE', file)}
-                        isProcessed={(activeCompany.reconciliation?.eInvoiceData || []).length > 0}
-                    />
-                    <UploadPanel
-                        title="Muhasebe KDV"
-                        description="191/391 tarafındaki muhasebe KDV dosyalarını seçin."
-                        files={activeUploads.reconciliation.accountingFiles}
-                        multiple
-                        onSelect={(files) => setReconciliationFiles('accountingFiles', files)}
-                        onProcess={(file) => handleProcessClick('ACCOUNTING', file)}
-                        isProcessed={(activeCompany.reconciliation?.accountingData || []).length > 0}
-                    />
-                    <UploadPanel
-                        title="Muhasebe Matrah"
-                        description="Satış modülü için matrah dosyalarını seçin."
-                        files={activeUploads.reconciliation.accountingMatrahFiles}
-                        multiple
-                        onSelect={(files) => setReconciliationFiles('accountingMatrahFiles', files)}
-                        onProcess={(file) => handleProcessClick('ACCOUNTING_MATRAH', file)}
-                        isProcessed={(activeCompany.reconciliation?.accountingMatrahData || []).length > 0}
-                    />
-                </div>
-            </Card>
+            {/* Tab Navigation */}
+            <div className="flex gap-1 bg-slate-900/50 p-1 rounded-xl border border-slate-700/50">
+                {[
+                    { id: 'kdv' as const, label: 'KDV Mutabakat', icon: FileSpreadsheet },
+                    { id: 'cari' as const, label: 'Cari Hesap', icon: Layers },
+                    { id: 'kebir' as const, label: 'Kebir Analiz', icon: CheckCircle2 },
+                ].map((tab) => (
+                    <button
+                        key={tab.id}
+                        type="button"
+                        onClick={() => setActiveUploadTab(tab.id)}
+                        className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all flex-1 justify-center ${activeUploadTab === tab.id
+                            ? 'bg-blue-600 text-white shadow'
+                            : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                            }`}
+                    >
+                        <tab.icon size={16} />
+                        {tab.label}
+                    </button>
+                ))}
+            </div>
 
-            <Card className="space-y-4">
-                <div className="flex items-center gap-2">
-                    <Layers size={18} className="text-indigo-400" />
-                    <h2 className="text-lg font-semibold text-white">Cari Hesap Kontrol dosyalari</h2>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <UploadPanel
-                        title="SMMM Kebir dosyasi"
-                        description="SMMM tarafindan gelen tek dosya secilir."
-                        files={smmmFiles}
-                        onSelect={(files) => {
-                            void setCurrentAccountFile('smmmFile', files[0] || null);
-                        }}
-                    />
-                    <UploadPanel
-                        title="Firma Kebir dosyasi"
-                        description="Firma tarafindan gelen tek dosya secilir."
-                        files={firmaFiles}
-                        onSelect={(files) => {
-                            void setCurrentAccountFile('firmaFile', files[0] || null);
-                        }}
-                    />
-                </div>
-            </Card>
-
-            <Card className="space-y-4">
-                <div className="flex items-center gap-2">
-                    <CheckCircle2 size={18} className="text-emerald-400" />
-                    <h2 className="text-lg font-semibold text-white">Kebir Analiz dosyasi</h2>
-                </div>
-                <UploadPanel
-                    title="Kebir dosyasi"
-                    description="Dosya yuklendiginde analiz otomatik calistirilir ve kaydedilir."
-                    files={kebirFiles}
-                    onSelect={(files) => {
-                        void handleKebirUpload(files[0] || null);
-                    }}
-                />
-
-                {kebirLoading && (
-                    <p className="text-sm text-blue-300">Kebir dosyasi analiz ediliyor...</p>
-                )}
-
-                {!kebirLoading && activeCompany.kebirAnalysis && (
-                    <p className="text-sm text-emerald-300">
-                        Kebir analizi hazir. Kebir Analizi modulu dogrudan bu veriyi kullanacak.
-                    </p>
-                )}
-
-                {kebirError && (
-                    <div className="flex items-start gap-2 text-sm text-red-300 bg-red-500/10 border border-red-500/30 rounded-lg p-3">
-                        <AlertCircle size={16} className="mt-0.5 shrink-0" />
-                        <p>{kebirError}</p>
+            {activeUploadTab === 'kdv' && (
+                <Card className="space-y-4">
+                    <div className="flex items-center gap-2">
+                        <FileSpreadsheet size={18} className="text-blue-400" />
+                        <h2 className="text-lg font-semibold text-white">KDV Mutabakat Dosyaları</h2>
                     </div>
-                )}
-            </Card>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <UploadPanel
+                            title="E-Fatura Listeleri"
+                            description="Satış/alış kontrolü için e-fatura listelerini seçin."
+                            files={activeUploads.reconciliation.eInvoiceFiles}
+                            multiple
+                            onSelect={(files) => setReconciliationFiles('eInvoiceFiles', files)}
+                            onProcess={(file) => handleProcessClick('EINVOICE', file)}
+                            isProcessed={(activeCompany.reconciliation?.eInvoiceData || []).length > 0}
+                        />
+                        <UploadPanel
+                            title="Muhasebe KDV"
+                            description="191/391 tarafındaki muhasebe KDV dosyalarını seçin."
+                            files={activeUploads.reconciliation.accountingFiles}
+                            multiple
+                            onSelect={(files) => setReconciliationFiles('accountingFiles', files)}
+                            onProcess={(file) => handleProcessClick('ACCOUNTING', file)}
+                            isProcessed={(activeCompany.reconciliation?.accountingData || []).length > 0}
+                        />
+                        <UploadPanel
+                            title="Muhasebe Matrah"
+                            description="Satış modülü için matrah dosyalarını seçin."
+                            files={activeUploads.reconciliation.accountingMatrahFiles}
+                            multiple
+                            onSelect={(files) => setReconciliationFiles('accountingMatrahFiles', files)}
+                            onProcess={(file) => handleProcessClick('ACCOUNTING_MATRAH', file)}
+                            isProcessed={(activeCompany.reconciliation?.accountingMatrahData || []).length > 0}
+                        />
+                    </div>
+                </Card>
+            )}
+
+            {activeUploadTab === 'cari' && (
+                <Card className="space-y-4">
+                    <div className="flex items-center gap-2">
+                        <Layers size={18} className="text-indigo-400" />
+                        <h2 className="text-lg font-semibold text-white">Cari Hesap Kontrol Dosyaları</h2>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <UploadPanel
+                            title="SMMM Kebir Dosyası"
+                            description="SMMM tarafından gelen tek dosya seçilir."
+                            files={smmmFiles}
+                            onSelect={(files) => {
+                                void setCurrentAccountFile('smmmFile', files[0] || null);
+                            }}
+                        />
+                        <UploadPanel
+                            title="Firma Kebir Dosyası"
+                            description="Firma tarafından gelen tek dosya seçilir."
+                            files={firmaFiles}
+                            onSelect={(files) => {
+                                void setCurrentAccountFile('firmaFile', files[0] || null);
+                            }}
+                        />
+                    </div>
+                </Card>
+            )}
+
+            {activeUploadTab === 'kebir' && (
+                <Card className="space-y-4">
+                    <div className="flex items-center gap-2">
+                        <CheckCircle2 size={18} className="text-emerald-400" />
+                        <h2 className="text-lg font-semibold text-white">Kebir Analiz Dosyası</h2>
+                    </div>
+                    <UploadPanel
+                        title="Kebir Dosyası"
+                        description="Dosya yüklendiginde analiz otomatik çalıştırılır ve kaydedilir."
+                        files={kebirFiles}
+                        onSelect={(files) => {
+                            void handleKebirUpload(files[0] || null);
+                        }}
+                    />
+
+                    {kebirLoading && (
+                        <p className="text-sm text-blue-300">Kebir dosyası analiz ediliyor...</p>
+                    )}
+
+                    {!kebirLoading && activeCompany.kebirAnalysis && (
+                        <p className="text-sm text-emerald-300">
+                            Kebir analizi hazır. Kebir Analizi modülü doğrudan bu veriyi kullanacak.
+                        </p>
+                    )}
+
+                    {kebirError && (
+                        <div className="flex items-start gap-2 text-sm text-red-300 bg-red-500/10 border border-red-500/30 rounded-lg p-3">
+                            <AlertCircle size={16} className="mt-0.5 shrink-0" />
+                            <p>{kebirError}</p>
+                        </div>
+                    )}
+                </Card>
+            )}
 
 
             {/* Processing Modal */}

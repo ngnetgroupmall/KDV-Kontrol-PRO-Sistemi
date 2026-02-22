@@ -1,11 +1,13 @@
 import { useMemo, useState } from 'react';
-import { Building2, Download, Layers, Search, UserRound } from 'lucide-react';
+import { Building2, Download, Search, UserRound } from 'lucide-react';
 import { Card } from '../../components/common/Card';
 import { useCompany } from '../../context/CompanyContext';
 import type { AccountDetail, Company } from '../common/types';
 import VoucherDetailModal, { type VoucherAccountOption, type VoucherDetailRow } from '../mizan/components/VoucherDetailModal';
 import { formatCurrency, formatDate } from '../../utils/formatters';
 import { matchesSearchAcrossFields } from '../../utils/search';
+import { round2, normalizeVoucherNo, parseDateInput, BALANCE_TOLERANCE } from '../../utils/accounting';
+import NoCompanySelected from '../../components/common/NoCompanySelected';
 
 type VoucherListSource = 'FIRMA' | 'SMMM';
 
@@ -27,26 +29,6 @@ interface VoucherListRow {
 
 const EMPTY_ACCOUNTS: AccountDetail[] = [];
 const EMPTY_VOUCHER_KEY = '__EMPTY_VOUCHER__';
-const BALANCE_TOLERANCE = 0.01;
-
-const round2 = (value: number): number => Math.round((value + Number.EPSILON) * 100) / 100;
-
-const normalizeVoucherNo = (value: string | undefined): string => {
-    return String(value || '').trim().replace(/\s+/g, '').toLocaleUpperCase('tr-TR');
-};
-
-const parseDateInput = (value: string, endOfDay = false): Date | null => {
-    if (!value) return null;
-    const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-    if (!match) return null;
-
-    const year = Number(match[1]);
-    const month = Number(match[2]) - 1;
-    const day = Number(match[3]);
-    const parsed = new Date(year, month, day, endOfDay ? 23 : 0, endOfDay ? 59 : 0, endOfDay ? 59 : 0, endOfDay ? 999 : 0);
-    if (Number.isNaN(parsed.getTime())) return null;
-    return parsed;
-};
 
 const isDateInRange = (value: Date | null | undefined, from: Date | null, to: Date | null): boolean => {
     if (!from && !to) return true;
@@ -537,17 +519,7 @@ export default function VoucherListPage() {
     const { activeCompany } = useCompany();
 
     if (!activeCompany) {
-        return (
-            <div className="flex flex-col items-center justify-center h-[60vh] text-center animate-fade-in">
-                <div className="w-24 h-24 bg-slate-800 rounded-full flex items-center justify-center mb-6">
-                    <Layers className="text-slate-600 w-12 h-12" />
-                </div>
-                <h2 className="text-2xl font-bold text-white mb-2">Firma secimi gerekli</h2>
-                <p className="text-slate-400 max-w-md">
-                    Fis listesi modulu icin lutfen once firma secin.
-                </p>
-            </div>
-        );
+        return <NoCompanySelected moduleName="Fiş Listesi" />;
     }
 
     return <VoucherListContent key={activeCompany.id} activeCompany={activeCompany} />;

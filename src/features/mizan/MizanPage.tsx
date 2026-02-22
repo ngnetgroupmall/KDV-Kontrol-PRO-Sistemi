@@ -20,14 +20,19 @@ import VoucherDetailModal, {
 } from './components/VoucherDetailModal';
 import { formatCurrency } from '../../utils/formatters';
 import { matchesSearchAcrossFields } from '../../utils/search';
-import { parseTurkishNumber } from '../../utils/parsers';
+import {
+    round2,
+    normalizeVoucherNo,
+    parseDateInput,
+    isTransactionInDateRange,
+    getTransactionAmount,
+    BALANCE_TOLERANCE,
+} from '../../utils/accounting';
 import {
     normalizeAccountDisplayName,
     resolveMainAccountStandardName,
     resolveMainOrIntermediateAccountName,
 } from './accountNameResolver';
-
-const round2 = (value: number): number => Math.round((value + Number.EPSILON) * 100) / 100;
 
 type MizanSource = 'FIRMA' | 'SMMM';
 type ActualBalanceSide = 'BORC' | 'ALACAK' | 'KAPALI';
@@ -50,129 +55,10 @@ interface EvaluatedAccount {
 const EMPTY_ACCOUNTS: AccountDetail[] = [];
 const EMPTY_FOREX_OVERRIDES: Record<string, boolean> = {};
 const EMPTY_APPROVALS: Record<string, boolean> = {};
-const BALANCE_TOLERANCE = 0.01;
-
-const normalizeVoucherNo = (value: string | undefined): string => {
-    return String(value || '').trim().replace(/\s+/g, '').toLocaleUpperCase('tr-TR');
-};
 
 const getMizanApprovalKey = (source: MizanSource, accountCode: string): string => {
     return `${source}:${String(accountCode || '').trim().toLocaleUpperCase('tr-TR')}`;
 };
-
-const parseDateInput = (value: string, endOfDay = false): Date | null => {
-    if (!value) return null;
-    const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-    if (!match) return null;
-
-    const year = Number(match[1]);
-    const month = Number(match[2]) - 1;
-    const day = Number(match[3]);
-    const parsed = new Date(year, month, day, endOfDay ? 23 : 0, endOfDay ? 59 : 0, endOfDay ? 59 : 0, endOfDay ? 999 : 0);
-    if (Number.isNaN(parsed.getTime())) return null;
-    return parsed;
-};
-
-const toValidCalendarDate = (year: number, month: number, day: number): Date | null => {
-    const date = new Date(year, month - 1, day, 12, 0, 0, 0);
-    if (Number.isNaN(date.getTime())) return null;
-    if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) return null;
-    return date;
-};
-
-const parseTransactionDate = (value: Date | string | number | null | undefined): Date | null => {
-    if (value === null || value === undefined || value === '') return null;
-    if (value instanceof Date) {
-        return Number.isNaN(value.getTime()) ? null : value;
-    }
-
-    if (typeof value === 'number') {
-        const excelEpochUtc = Date.UTC(1899, 11, 30);
-        const date = new Date(excelEpochUtc + Math.round(value * 86400 * 1000));
-        return Number.isNaN(date.getTime()) ? null : date;
-    }
-
-    const raw = String(value).trim();
-    if (!raw) return null;
-
-    const ddMmYyyy = raw.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{2,4})(?:\D.*)?$/);
-    if (ddMmYyyy) {
-        const year = ddMmYyyy[3].length === 2 ? Number(`20${ddMmYyyy[3]}`) : Number(ddMmYyyy[3]);
-        const month = Number(ddMmYyyy[2]);
-        const day = Number(ddMmYyyy[1]);
-        const date = toValidCalendarDate(year, month, day);
-        if (date) return date;
-    }
-
-    const yyyyMmDd = raw.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:[T\s].*)?$/);
-    if (yyyyMmDd) {
-        const year = Number(yyyyMmDd[1]);
-        const month = Number(yyyyMmDd[2]);
-        const day = Number(yyyyMmDd[3]);
-        const date = toValidCalendarDate(year, month, day);
-        if (date) return date;
-    }
-
-    const serialLike = raw.replace(',', '.');
-    if (/^\d{4,6}(?:\.\d+)?$/.test(serialLike)) {
-        const serial = Number(serialLike);
-        if (Number.isFinite(serial) && serial > 20000 && serial < 80000) {
-            const excelEpochUtc = Date.UTC(1899, 11, 30);
-            const date = new Date(excelEpochUtc + Math.round(serial * 86400 * 1000));
-            if (!Number.isNaN(date.getTime())) {
-                return date;
-            }
-        }
-    }
-
-    const parsed = new Date(raw);
-    return Number.isNaN(parsed.getTime()) ? null : parsed;
-};
-
-const isDateWithinRange = (year: number, month: number, day: number, from: Date | null, to: Date | null): boolean => {
-    const date = toValidCalendarDate(year, month, day);
-    if (!date) return false;
-    const ts = date.getTime();
-    if (from && ts < from.getTime()) return false;
-    if (to && ts > to.getTime()) return false;
-    return true;
-};
-
-const isTransactionInDateRange = (dateValue: Date | string | number | null | undefined, from: Date | null, to: Date | null): boolean => {
-    if (!from && !to) return true;
-
-    const date = parseTransactionDate(dateValue);
-    if (!date) return false;
-
-    if (isDateWithinRange(date.getFullYear(), date.getMonth() + 1, date.getDate(), from, to)) {
-        return true;
-    }
-
-    const utcYear = date.getUTCFullYear();
-    const utcMonth = date.getUTCMonth() + 1;
-    const utcDay = date.getUTCDate();
-    if (
-        utcYear !== date.getFullYear() ||
-        utcMonth !== date.getMonth() + 1 ||
-        utcDay !== date.getDate()
-    ) {
-        return isDateWithinRange(utcYear, utcMonth, utcDay, from, to);
-    }
-
-    return false;
-};
-
-const getTransactionAmount = (value: unknown): number => {
-    if (typeof value === 'number') {
-        return Number.isFinite(value) ? value : 0;
-    }
-    if (typeof value === 'string') {
-        const parsed = parseTurkishNumber(value);
-        return Number.isFinite(parsed) ? parsed : 0;
-    }
-    return 0;
-};
-
 
 const getActualBalanceSide = (balance: number): ActualBalanceSide => {
     if (Math.abs(balance) <= BALANCE_TOLERANCE) return 'KAPALI';

@@ -20,6 +20,14 @@ import VoucherDetailModal, {
 import { buildTemporaryTaxControls, type TemporaryTaxControlResult } from './controlChecks';
 import { formatCurrency } from '../../utils/formatters';
 import { resolveMainAccountStandardName } from '../mizan/accountNameResolver';
+import {
+    round2,
+    normalizeVoucherNo,
+    toValidCalendarDate,
+    parseFlexibleNumber,
+    formatPercent,
+    BALANCE_TOLERANCE,
+} from '../../utils/accounting';
 
 type TemporaryTaxSource = 'FIRMA' | 'SMMM';
 type AccountTypeMode = 'TL' | 'FOREX' | 'AUTO';
@@ -30,7 +38,6 @@ type QuarterPeriod = Exclude<ProfitLossPeriod, 'YEARLY'>;
 
 const EMPTY_ACCOUNTS: AccountDetail[] = [];
 const EMPTY_FOREX_OVERRIDES: Record<string, boolean> = {};
-const BALANCE_TOLERANCE = 0.01;
 const STOCK_MAIN_CODES = new Set(['150', '151', '152', '153', '157']);
 const SMM_COST_MAIN_CODES = new Set(['620', '621']);
 const SMM_SALES_MAIN_CODES = new Set(['600', '601', '602']);
@@ -54,11 +61,11 @@ const INCOME_STATEMENT_ROLLUP_CODES: Record<string, string> = {
 const PROFIT_LOSS_PERIOD_OPTIONS: ProfitLossPeriod[] = ['Q1', 'Q2', 'Q3', 'Q4', 'YEARLY'];
 
 const PROFIT_LOSS_PERIOD_LABELS: Record<ProfitLossPeriod, string> = {
-    Q1: '1. Ceyrek',
-    Q2: '2. Ceyrek',
-    Q3: '3. Ceyrek',
-    Q4: '4. Ceyrek',
-    YEARLY: 'Yillik',
+    Q1: '1. Çeyrek',
+    Q2: '2. Çeyrek',
+    Q3: '3. Çeyrek',
+    Q4: '4. Çeyrek',
+    YEARLY: 'Yıllık',
 };
 
 const PROFIT_LOSS_PERIOD_FILE_KEYS: Record<ProfitLossPeriod, string> = {
@@ -67,19 +74,6 @@ const PROFIT_LOSS_PERIOD_FILE_KEYS: Record<ProfitLossPeriod, string> = {
     Q3: 'q3',
     Q4: 'q4',
     YEARLY: 'yillik',
-};
-
-const round2 = (value: number): number => Math.round((value + Number.EPSILON) * 100) / 100;
-
-const formatPercent = (value: number): string => {
-    return new Intl.NumberFormat('tr-TR', {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-    }).format(value);
-};
-
-const normalizeVoucherNo = (value: string | undefined): string => {
-    return String(value || '').trim().replace(/\s+/g, '').toLocaleUpperCase('tr-TR');
 };
 
 const getMain3Code = (accountCode: string): string => {
@@ -105,34 +99,6 @@ const getStatusTextClass = (status: ProfitLossStatus): string => {
     if (status === 'KAR') return 'text-emerald-300';
     if (status === 'ZARAR') return 'text-rose-300';
     return 'text-slate-300';
-};
-
-const parseFlexibleNumber = (value: string): number | null => {
-    const raw = String(value || '').trim();
-    if (!raw) return null;
-
-    let normalized = raw.replace(/\s+/g, '');
-    if (normalized.includes(',') && normalized.includes('.')) {
-        if (normalized.lastIndexOf(',') > normalized.lastIndexOf('.')) {
-            normalized = normalized.replace(/\./g, '').replace(/,/g, '.');
-        } else {
-            normalized = normalized.replace(/,/g, '');
-        }
-    } else if (normalized.includes(',')) {
-        normalized = normalized.replace(/,/g, '.');
-    }
-
-    normalized = normalized.replace(/[^0-9.-]/g, '');
-    const parsed = Number(normalized);
-    if (!Number.isFinite(parsed)) return null;
-    return parsed;
-};
-
-const toValidCalendarDate = (year: number, month: number, day: number): Date | null => {
-    const date = new Date(year, month - 1, day, 12, 0, 0, 0);
-    if (Number.isNaN(date.getTime())) return null;
-    if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) return null;
-    return date;
 };
 
 const getValidDate = (value: Date | string | number | null | undefined): Date | null => {
