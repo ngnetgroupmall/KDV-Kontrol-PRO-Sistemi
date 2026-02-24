@@ -123,6 +123,17 @@ const getFirstElement = (xml: XmlRoot, tagName: string): Element | null => {
     return null;
 };
 
+const getElements = (xml: XmlRoot, tagName: string): Element[] => {
+    const prefixed = Array.from(xml.getElementsByTagName(tagName));
+    if (prefixed.length > 0) return prefixed;
+
+    const localName = getLocalName(tagName);
+    const byNs = Array.from(xml.getElementsByTagNameNS('*', localName));
+    if (byNs.length > 0) return byNs;
+
+    return Array.from(xml.getElementsByTagName(localName));
+};
+
 const getText = (xml: XmlRoot, tags: string | string[]): string => {
     const tagNames = Array.isArray(tags) ? tags : [tags];
     for (const tag of tagNames) {
@@ -133,6 +144,85 @@ const getText = (xml: XmlRoot, tags: string | string[]): string => {
         }
     }
     return '';
+};
+
+const hasParserError = (xmlDoc: Document): boolean => xmlDoc.getElementsByTagName('parsererror').length > 0;
+
+const decodeBase64Utf8 = (encoded: string): string => {
+    const normalized = encoded.replace(/\s+/g, '').trim();
+    if (!normalized) return '';
+
+    try {
+        const binary = atob(normalized);
+        const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+        return new TextDecoder().decode(bytes);
+    } catch {
+        try {
+            return atob(normalized);
+        } catch {
+            return '';
+        }
+    }
+};
+
+const isXsltAttachment = (referenceElement: Element, embeddedElement: Element): boolean => {
+    const documentType = getText(referenceElement, ['cbc:DocumentType', 'DocumentType']).toLowerCase();
+    const documentTypeCode = getText(referenceElement, ['cbc:DocumentTypeCode', 'DocumentTypeCode']).toLowerCase();
+    const referenceId = getText(referenceElement, ['cbc:ID', 'ID']).toLowerCase();
+    const fileName = (embeddedElement.getAttribute('filename') || '').toLowerCase();
+    const mimeCode = (embeddedElement.getAttribute('mimeCode') || '').toLowerCase();
+
+    return (
+        documentType.includes('xsl') ||
+        documentTypeCode.includes('xsl') ||
+        referenceId.endsWith('.xsl') ||
+        referenceId.endsWith('.xslt') ||
+        fileName.endsWith('.xsl') ||
+        fileName.endsWith('.xslt') ||
+        mimeCode.includes('xsl')
+    );
+};
+
+const extractEmbeddedXslt = (xmlDoc: Document): string => {
+    const references = getElements(xmlDoc, 'cac:AdditionalDocumentReference');
+
+    for (const reference of references) {
+        const attachment = getFirstElement(reference, 'cac:Attachment') || getFirstElement(reference, 'Attachment');
+        if (!attachment) continue;
+
+        const embeddedDocument =
+            getFirstElement(attachment, 'cbc:EmbeddedDocumentBinaryObject') ||
+            getFirstElement(attachment, 'EmbeddedDocumentBinaryObject');
+        if (!embeddedDocument?.textContent) continue;
+        if (!isXsltAttachment(reference, embeddedDocument)) continue;
+
+        const decoded = decodeBase64Utf8(embeddedDocument.textContent);
+        if (decoded.includes('<xsl:stylesheet') || decoded.includes('<xsl:transform')) {
+            return decoded;
+        }
+    }
+
+    return '';
+};
+
+const generateOriginalInvoiceHtml = (xmlDoc: Document): string => {
+    if (typeof XSLTProcessor === 'undefined') return '';
+
+    const xsltContent = extractEmbeddedXslt(xmlDoc);
+    if (!xsltContent) return '';
+
+    const parser = new DOMParser();
+    const xsltDoc = parser.parseFromString(xsltContent, 'text/xml');
+    if (hasParserError(xsltDoc)) return '';
+
+    try {
+        const processor = new XSLTProcessor();
+        processor.importStylesheet(xsltDoc);
+        const transformed = processor.transformToDocument(xmlDoc);
+        return new XMLSerializer().serializeToString(transformed);
+    } catch {
+        return '';
+    }
 };
 
 const flattenXml = (
@@ -266,7 +356,7 @@ export const parseFaturaXmlFile = async (
     for (let i = 0; i < xmlSources.length; i += 1) {
         const source = xmlSources[i];
         const xmlDoc = parser.parseFromString(source.content, 'text/xml');
-        if (xmlDoc.getElementsByTagName('parsererror').length > 0) {
+        if (hasParserError(xmlDoc)) {
             continue;
         }
 
@@ -389,6 +479,7 @@ export const parseFaturaXmlFile = async (
             processedItems += 1;
         }
 
+        const previewHtml = generateOriginalInvoiceHtml(xmlDoc);
         const invoice: FaturaXmlInvoice = {
             id: sanitizeInvoiceId(invNo, i),
             invNo,
@@ -403,6 +494,7 @@ export const parseFaturaXmlFile = async (
             taxInclusiveAmount: toNumberOrString(taxInclusiveAmount),
             currency,
             totalAmountLabel: `${toDisplayString(toNumberOrString(taxInclusiveAmount))} ${currency}`.trim(),
+            previewHtml: previewHtml || undefined,
             lines: invoiceLines,
         };
 

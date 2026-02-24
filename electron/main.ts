@@ -29,7 +29,6 @@ process.on('unhandledRejection', (reason) => {
 process.env.DIST = path.join(__dirname, '../dist')
 process.env.VITE_PUBLIC = app.isPackaged ? process.env.DIST : path.join(process.env.DIST, '../public')
 
-
 let win: BrowserWindowType | null
 
 // Configure Auto Updater
@@ -37,7 +36,9 @@ autoUpdater.autoDownload = true
 autoUpdater.autoInstallOnAppQuit = true
 
 function createWindow() {
-    writeMainLog(`createWindow start. isPackaged=${String(app.isPackaged)} DIST=${process.env.DIST} VITE_PUBLIC=${process.env.VITE_PUBLIC}`)
+    writeMainLog(
+        `createWindow start. isPackaged=${String(app.isPackaged)} DIST=${process.env.DIST} VITE_PUBLIC=${process.env.VITE_PUBLIC}`,
+    )
     win = new BrowserWindow({
         icon: path.join(process.env.VITE_PUBLIC!, 'logo.png'),
         autoHideMenuBar: true,
@@ -71,38 +72,48 @@ function createWindow() {
 
     // Auto updater events
     autoUpdater.on('checking-for-update', () => {
-        win?.webContents.send('update-message', 'Güncellemeler denetleniyor...')
+        writeMainLog('autoUpdater checking-for-update')
+        win?.webContents.send('update-message', 'Guncellemeler denetleniyor...')
     })
 
     autoUpdater.on('update-available', (info) => {
-        win?.webContents.send('update-message', `Yeni sürüm bulundu: v${info.version}. İndiriliyor...`)
+        writeMainLog(`autoUpdater update-available version=${info.version}`)
+        win?.webContents.send('update-message', `Yeni surum bulundu: v${info.version}. Indiriliyor...`)
     })
 
     autoUpdater.on('update-not-available', () => {
-        win?.webContents.send('update-message', 'Uygulama güncel.')
+        writeMainLog('autoUpdater update-not-available')
+        win?.webContents.send('update-message', 'Uygulama guncel.')
     })
 
     autoUpdater.on('error', (err) => {
-        win?.webContents.send('update-message', `Güncelleme hatası: ${err.message}`)
+        writeMainLog(`autoUpdater error: ${err.message}`)
+        win?.webContents.send('update-message', `Guncelleme hatasi: ${err.message}`)
     })
 
     autoUpdater.on('download-progress', (progressObj) => {
+        writeMainLog(`autoUpdater download-progress ${progressObj.percent.toFixed(2)}%`)
         win?.webContents.send('update-download-progress', progressObj.percent)
     })
 
     autoUpdater.on('update-downloaded', () => {
-        win?.webContents.send('update-downloaded', 'Güncelleme indirildi. Yeniden başlatıldığında kurulacak.')
+        writeMainLog('autoUpdater update-downloaded')
+        win?.webContents.send('update-downloaded', 'Guncelleme indirildi. Yeniden baslatildiginda kurulacak.')
     })
 
     // Test active push message to Renderer-process.
     win.webContents.on('did-finish-load', () => {
-        win?.webContents.send('main-process-message', (new Date()).toLocaleString())
+        win?.webContents.send('main-process-message', new Date().toLocaleString())
         // Start checking for updates after load
         if (app.isPackaged) {
+            writeMainLog('autoUpdater checkForUpdatesAndNotify start')
             void autoUpdater.checkForUpdatesAndNotify().catch((error) => {
                 const message = error instanceof Error ? error.message : String(error)
+                writeMainLog(`autoUpdater checkForUpdatesAndNotify failed: ${message}`)
                 win?.webContents.send('update-message', `Guncelleme kontrolu basarisiz: ${message}`)
             })
+        } else {
+            writeMainLog('autoUpdater skipped (app.isPackaged=false)')
         }
     })
 
@@ -118,6 +129,7 @@ function createWindow() {
 
 // IPC for Manual Install
 ipcMain.on('restart-app', () => {
+    writeMainLog('ipc restart-app -> autoUpdater.quitAndInstall')
     autoUpdater.quitAndInstall()
 })
 

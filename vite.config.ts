@@ -18,6 +18,19 @@ export default defineConfig({
       },
       {
         entry: 'electron/preload.ts',
+        vite: {
+          build: {
+            lib: {
+              formats: ['cjs'],
+              fileName: () => 'preload.js',
+            },
+            rollupOptions: {
+              output: {
+                format: 'cjs',
+              },
+            },
+          },
+        },
         onstart(options) {
           // Notify the Renderer-Process to reload the page when the Preload-Scripts build is complete, 
           // instead of restarting the entire Electron App.

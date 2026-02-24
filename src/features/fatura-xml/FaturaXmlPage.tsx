@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState, type DragEvent } from 'react';
+import { createPortal } from 'react-dom';
 import { AlertCircle, FileArchive, Layers, RefreshCcw, Trash2, Upload } from 'lucide-react';
 import { Button } from '../../components/common/Button';
 import { Card } from '../../components/common/Card';
@@ -31,10 +32,13 @@ export default function FaturaXmlPage() {
     });
 
     const moduleData = activeCompany?.faturaXml ?? null;
-    const previewHtml = useMemo(
-        () => (selectedInvoice ? generateInvoiceHtml(selectedInvoice) : ''),
-        [selectedInvoice],
-    );
+    const previewHtml = useMemo(() => {
+        if (!selectedInvoice) return '';
+        if (selectedInvoice.previewHtml?.trim()) {
+            return selectedInvoice.previewHtml;
+        }
+        return generateInvoiceHtml(selectedInvoice);
+    }, [selectedInvoice]);
 
     const handleProgress = (state: ParseProgressState) => {
         setProgress(state);
@@ -168,11 +172,10 @@ export default function FaturaXmlPage() {
                     onDragOver={onDragOver}
                     onDragLeave={onDragLeave}
                     onDrop={onDrop}
-                    className={`rounded-xl border-2 border-dashed transition-colors p-8 text-center cursor-pointer ${
-                        isDragging
+                    className={`rounded-xl border-2 border-dashed transition-colors p-8 text-center cursor-pointer ${isDragging
                             ? 'border-blue-400 bg-blue-500/10'
                             : 'border-slate-600 bg-slate-900/40 hover:border-blue-500/60'
-                    }`}
+                        }`}
                     onClick={() => fileInputRef.current?.click()}
                 >
                     <Upload className="mx-auto text-blue-400 mb-3" size={28} />
@@ -260,7 +263,7 @@ export default function FaturaXmlPage() {
                 )}
             </Card>
 
-            {selectedInvoice && (
+            {selectedInvoice && createPortal(
                 <div
                     className="fixed inset-0 z-[70] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
                     onClick={() => setSelectedInvoice(null)}
@@ -279,7 +282,8 @@ export default function FaturaXmlPage() {
                         </div>
                         <iframe title="Fatura Onizleme" srcDoc={previewHtml} className="w-full h-[calc(100%-48px)]" />
                     </div>
-                </div>
+                </div>,
+                document.body
             )}
         </div>
     );

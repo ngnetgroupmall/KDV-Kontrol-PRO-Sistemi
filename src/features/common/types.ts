@@ -128,6 +128,7 @@ export interface FaturaXmlInvoice {
     taxInclusiveAmount: number | string;
     currency: string;
     totalAmountLabel: string;
+    previewHtml?: string;
     lines: FaturaXmlLineItem[];
 }
 
