@@ -158,7 +158,8 @@ export function useReconciliation() {
 
             if (result.success && result.data) {
                 setEInvoiceData((prev) => {
-                    const updated = [...prev, ...result.data!];
+                    const base = currentFileIndex === 0 ? [] : prev;
+                    const updated = [...base, ...result.data!];
                     void saveDataToCompany({ eInvoiceData: updated });
                     return updated;
                 });
@@ -193,7 +194,8 @@ export function useReconciliation() {
 
             if (result.success && result.data) {
                 setAccountingData((prev) => {
-                    const updated = [...prev, ...result.data!];
+                    const base = currentFileIndex === 0 ? [] : prev;
+                    const updated = [...base, ...result.data!];
                     void saveDataToCompany({ accountingData: updated });
                     return updated;
                 });
@@ -232,7 +234,8 @@ export function useReconciliation() {
 
             if (result.success && result.data) {
                 setAccountingMatrahData((prev) => {
-                    const updated = [...prev, ...result.data!];
+                    const base = currentFileIndex === 0 ? [] : prev;
+                    const updated = [...base, ...result.data!];
                     void saveDataToCompany({ accountingMatrahData: updated });
                     return updated;
                 });
